@@ -1,0 +1,267 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DebugForge Design System
+   Industrial debugging tool aesthetic
+   Dark-first, information-dense, semantic colors
+*/
+
+@layer base {
+  :root {
+    /* Core surfaces - dark industrial slate */
+    --background: 220 16% 8%;
+    --foreground: 220 10% 92%;
+    
+    /* Elevated surfaces */
+    --card: 220 16% 11%;
+    --card-foreground: 220 10% 92%;
+    
+    --popover: 220 16% 13%;
+    --popover-foreground: 220 10% 92%;
+    
+    /* Panel surfaces */
+    --panel: 220 16% 10%;
+    --panel-header: 220 16% 12%;
+    --panel-border: 220 14% 18%;
+    
+    /* Primary - muted blue for interactive elements */
+    --primary: 215 70% 50%;
+    --primary-foreground: 220 10% 98%;
+    
+    /* Secondary - subtle surface */
+    --secondary: 220 14% 16%;
+    --secondary-foreground: 220 10% 75%;
+    
+    /* Muted elements */
+    --muted: 220 14% 14%;
+    --muted-foreground: 220 10% 55%;
+    
+    /* Accent */
+    --accent: 220 14% 18%;
+    --accent-foreground: 220 10% 90%;
+    
+    /* Semantic colors - THE CORE OF DEBUGGING UI */
+    --error: 0 72% 51%;
+    --error-foreground: 0 0% 100%;
+    --error-muted: 0 50% 20%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 10% 10%;
+    --warning-muted: 38 50% 18%;
+    
+    --success: 142 71% 45%;
+    --success-foreground: 142 10% 10%;
+    --success-muted: 142 40% 16%;
+    
+    --info: 199 89% 48%;
+    --info-foreground: 199 10% 10%;
+    --info-muted: 199 50% 18%;
+    
+    /* AI-specific - cyan/blue for AI-generated content */
+    --ai: 187 80% 48%;
+    --ai-foreground: 187 10% 10%;
+    --ai-muted: 187 40% 15%;
+    
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Borders and inputs */
+    --border: 220 14% 18%;
+    --input: 220 14% 14%;
+    --ring: 215 70% 50%;
+    
+    --radius: 0.375rem;
+    
+    /* Code highlighting */
+    --code-bg: 220 16% 7%;
+    --code-line-highlight: 215 50% 15%;
+    --code-line-added: 142 40% 12%;
+    --code-line-removed: 0 40% 12%;
+    
+    /* Sidebar */
+    --sidebar-background: 220 16% 9%;
+    --sidebar-foreground: 220 10% 75%;
+    --sidebar-primary: 215 70% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 14%;
+    --sidebar-accent-foreground: 220 10% 90%;
+    --sidebar-border: 220 14% 16%;
+    --sidebar-ring: 215 70% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  }
+}
+
+@layer components {
+  /* Panel system - using direct HSL values for @apply compatibility */
+  .panel {
+    background-color: hsl(var(--panel));
+    border: 1px solid hsl(var(--panel-border));
+    @apply rounded;
+  }
+  
+  .panel-header {
+    background-color: hsl(var(--panel-header));
+    border-bottom: 1px solid hsl(var(--panel-border));
+    @apply px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground;
+  }
+  
+  .panel-content {
+    @apply p-3;
+  }
+  
+  /* Code display */
+  .code-block {
+    background-color: hsl(var(--code-bg));
+    @apply rounded font-mono text-sm;
+  }
+  
+  .code-line {
+    @apply px-4 py-0.5 border-l-2 border-transparent;
+  }
+  
+  .code-line-number {
+    @apply text-muted-foreground select-none w-12 inline-block text-right pr-4;
+  }
+  
+  .code-line-added {
+    background-color: hsl(var(--code-line-added));
+    border-left-color: hsl(var(--success));
+  }
+  
+  .code-line-removed {
+    background-color: hsl(var(--code-line-removed));
+    border-left-color: hsl(var(--error));
+  }
+  
+  .code-line-highlight {
+    background-color: hsl(var(--code-line-highlight));
+    border-left-color: hsl(var(--info));
+  }
+  
+  /* Tree view */
+  .tree-item {
+    @apply flex items-center gap-2 px-2 py-1 rounded text-sm cursor-pointer;
+    @apply hover:bg-accent transition-colors;
+  }
+  
+  .tree-item-active {
+    @apply bg-accent text-accent-foreground;
+  }
+  
+  /* Diagnostic items */
+  .diagnostic-item {
+    @apply flex items-start gap-3 p-3 rounded border border-transparent;
+    @apply cursor-pointer transition-colors;
+  }
+  
+  .diagnostic-item:hover {
+    background-color: hsl(var(--accent) / 0.5);
+  }
+  
+  /* Platform preview */
+  .preview-frame {
+    @apply bg-background rounded overflow-hidden;
+    border: 1px solid hsl(var(--panel-border));
+  }
+  
+  .preview-header {
+    background-color: hsl(var(--panel-header));
+    border-bottom: 1px solid hsl(var(--panel-border));
+    @apply px-3 py-1.5 flex items-center justify-between text-xs;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* Resizable panels */
+.resize-handle {
+  @apply bg-transparent transition-colors;
+}
+
+.resize-handle:hover {
+  background-color: hsl(var(--primary) / 0.5);
+}
+
+.resize-handle[data-resize-handle-active] {
+  background-color: hsl(var(--primary));
+}
+
+/* Syntax highlighting tokens */
+.token-keyword {
+  color: hsl(280 70% 65%);
+}
+
+.token-string {
+  color: hsl(100 50% 55%);
+}
+
+.token-comment {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.token-annotation {
+  color: hsl(45 90% 60%);
+}
+
+.token-number {
+  color: hsl(30 90% 60%);
+}
+
+.token-function {
+  color: hsl(200 80% 65%);
+}
+
+.token-type {
+  color: hsl(175 70% 55%);
+}
+
+/* Focus states for keyboard navigation */
+.focus-visible-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--primary));
+}
+
+/* Resizable panels */
+.resize-handle {
+  @apply bg-transparent hover:bg-primary/50 transition-colors;
+}
+
+.resize-handle[data-resize-handle-active] {
+  @apply bg-primary;
+}

@@ -1,0 +1,1009 @@
+package com.kmpforge.debugforge.app
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+
+@Composable
+fun App() {
+    val viewModel = remember { DebugForgeViewModel() }
+    val uiState by viewModel.uiState.collectAsState()
+    
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Color(0xFF7C3AED),
+            secondary = Color(0xFF10B981),
+            background = Color(0xFF0F172A),
+            surface = Color(0xFF1E293B),
+            onBackground = Color(0xFFE2E8F0),
+            onSurface = Color(0xFFE2E8F0),
+            error = Color(0xFFEF4444)
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            when (val state = uiState) {
+                is UiState.Idle -> RepoInputScreen(viewModel)
+                is UiState.Loading -> LoadingScreen(state.message)
+                is UiState.Ready -> WorkspaceScreen(state, viewModel)
+                is UiState.Error -> ErrorScreen(state.message, viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun RepoInputScreen(viewModel: DebugForgeViewModel) {
+    var repoPath by remember { mutableStateOf("") }
+    val fileSystem = remember { com.kmpforge.debugforge.platform.PlatformFileSystem() }
+    val scope = rememberCoroutineScope()
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Logo
+        Surface(
+            modifier = Modifier.size(80.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    "K",
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Text(
+            "DebugForge",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        
+        Text(
+            "AI-Powered Kotlin Multiplatform Debugger",
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+        )
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        // Input card
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 600.dp)
+                .fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    "Enter KMP Project Path or GitHub URL",
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                OutlinedTextField(
+                    value = repoPath,
+                    onValueChange = { repoPath = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("https://github.com/user/repo or D:/Projects/my-kmp-project") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Browse button for folder picker
+                OutlinedButton(
+                    onClick = { 
+                        scope.launch {
+                            val selected = fileSystem.pickProjectFolder()
+                            if (selected != null) {
+                                repoPath = selected
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("📁 Browse Folder", modifier = Modifier.padding(8.dp))
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Button(
+                    onClick = { 
+                        viewModel.loadRepo(repoPath) 
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = repoPath.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("Scan Repository", modifier = Modifier.padding(8.dp))
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Backend status
+        val isConnected by viewModel.isBackendConnected.collectAsState()
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (isConnected) Color(0xFF10B981) else Color(0xFFEF4444))
+                )
+                Text(
+                    if (isConnected) "Backend connected" else "Backend offline",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LoadingScreen(message: String) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(message, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+    }
+}
+
+@Composable
+fun ErrorScreen(message: String, viewModel: DebugForgeViewModel) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "⚠️",
+            fontSize = 48.sp
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Error",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.error
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            message,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(onClick = { viewModel.reset() }) {
+            Text("Try Again")
+        }
+    }
+}
+
+@Composable
+fun WorkspaceScreen(state: UiState.Ready, viewModel: DebugForgeViewModel) {
+    val syncStatus by viewModel.syncStatus.collectAsState()
+    val githubEnabled by viewModel.githubSyncEnabled.collectAsState()
+    val undoStack by viewModel.undoManager.undoStack.collectAsState()
+    val redoStack by viewModel.undoManager.redoStack.collectAsState()
+    var showUndoHistory by remember { mutableStateOf(false) }
+    
+    val fileSystem = remember { com.kmpforge.debugforge.platform.PlatformFileSystem() }
+    val scope = rememberCoroutineScope()
+    var isPicking by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top bar with Change Project button
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = {
+                    isPicking = true
+                    scope.launch {
+                        val selected = fileSystem.pickProjectFolder()
+                        if (selected != null) {
+                            viewModel.loadRepo(selected)
+                        }
+                        isPicking = false
+                    }
+                },
+                enabled = !isPicking,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Change Project", modifier = Modifier.padding(4.dp))
+            }
+        }
+        // GitHub Sync Status Banner
+        if (syncStatus != null) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = if (syncStatus!!.startsWith("✅")) {
+                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                } else if (syncStatus!!.startsWith("❌")) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+                } else {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                }
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        syncStatus!!,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { viewModel.clearSyncStatus() },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Text("✕", fontSize = 16.sp)
+                    }
+                }
+            }
+        }
+        
+        Row(modifier = Modifier.weight(1f)) {
+        // Left panel - Modules
+        Surface(
+            modifier = Modifier
+                .width(280.dp)
+                .fillMaxHeight(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "Modules",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                LazyColumn {
+                    items(state.modules) { module ->
+                        ModuleItem(module)
+                    }
+                }
+            }
+        }
+        
+        // Center - Diagnostics
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Diagnostics (${state.diagnostics.size})",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                
+                // Metrics badge
+                Surface(
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        "${state.sharedCodePercent.toInt()}% shared code",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            if (state.diagnostics.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("✅", fontSize = 48.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "No issues found!",
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(state.diagnostics) { diagnostic ->
+                        DiagnosticCard(diagnostic)
+                    }
+                }
+            }
+        }
+        
+        // Right panel - Suggestions
+        Surface(
+            modifier = Modifier
+                .width(320.dp)
+                .fillMaxHeight(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "AI Suggestions",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.suggestions) { suggestion ->
+                        SuggestionCard(suggestion, viewModel, githubEnabled, state.repoPath)
+                    }
+                }
+            }
+        }
+    }
+    
+        // Bottom Undo Bar
+        if (undoStack.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Undo info
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "↩️",
+                            fontSize = 16.sp
+                        )
+                        Column {
+                            Text(
+                                "${undoStack.count { !it.isUndone }} changes can be undone",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "Last: ${undoStack.firstOrNull { !it.isUndone }?.suggestionTitle ?: "None"}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    
+                    // Undo/Redo buttons
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // History button
+                        OutlinedButton(
+                            onClick = { showUndoHistory = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("📋 History", fontSize = 12.sp)
+                        }
+                        
+                        // Redo button
+                        OutlinedButton(
+                            onClick = { viewModel.redoLastFix() },
+                            enabled = redoStack.isNotEmpty(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("↪️ Redo", fontSize = 12.sp)
+                        }
+                        
+                        // Undo button
+                        Button(
+                            onClick = { viewModel.undoLastFix() },
+                            enabled = undoStack.any { !it.isUndone },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("↩️ Undo", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Undo History Dialog
+    if (showUndoHistory) {
+        AlertDialog(
+            onDismissRequest = { showUndoHistory = false },
+            title = { 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Undo History")
+                    Text(
+                        "${undoStack.size} total",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(undoStack.take(20)) { fix ->
+                        UndoHistoryItem(
+                            fix = fix,
+                            onUndo = {
+                                viewModel.undoFix(fix.id)
+                                showUndoHistory = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            viewModel.clearUndoHistory()
+                            showUndoHistory = false
+                        }
+                    ) {
+                        Text("Clear All", color = MaterialTheme.colorScheme.error)
+                    }
+                    Button(onClick = { showUndoHistory = false }) {
+                        Text("Close")
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun UndoHistoryItem(fix: AppliedFix, onUndo: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (fix.isUndone) {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+        } else {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+        },
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (fix.isUndone) "↩️" else "📝",
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        fix.suggestionTitle.removePrefix("🤖 "),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (fix.isUndone) {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    fix.filePath.substringAfterLast("/").substringAfterLast("\\"),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            
+            if (!fix.isUndone) {
+                Button(
+                    onClick = onUndo,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("Undo", fontSize = 11.sp)
+                }
+            } else {
+                Text(
+                    "Undone",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ModuleItem(module: ModuleDisplay) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("📁", fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    module.name,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "${module.fileCount} files",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DiagnosticCard(diagnostic: DiagnosticDisplay) {
+    val severityColor = when (diagnostic.severity) {
+        "ERROR" -> Color(0xFFEF4444)
+        "WARNING" -> Color(0xFFF59E0B)
+        else -> Color(0xFF3B82F6)
+    }
+    
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(severityColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    diagnostic.severity,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = severityColor
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    diagnostic.category,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                diagnostic.message,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Text(
+                diagnostic.filePath,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.primary,
+                fontFamily = FontFamily.Monospace
+            )
+            
+            Text(
+                "Line ${diagnostic.line}",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+            )
+        }
+    }
+}
+
+@Composable
+fun SuggestionCard(
+    suggestion: SuggestionDisplay,
+    viewModel: DebugForgeViewModel,
+    githubEnabled: Boolean,
+    repoPath: String
+) {
+    var showDiffDialog by remember { mutableStateOf(false) }
+    var showGitHubDialog by remember { mutableStateOf(false) }
+    var showApplyConfirm by remember { mutableStateOf(false) }
+    
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🤖", fontSize = 14.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    suggestion.title,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                suggestion.rationale,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { showDiffDialog = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(8.dp),
+                        enabled = true // Always enabled to show diff details
+                    ) {
+                        Text("View Diff", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = { showApplyConfirm = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(8.dp),
+                        enabled = !suggestion.afterCode.isNullOrEmpty()
+                    ) {
+                        Text("Apply", fontSize = 12.sp)
+                    }
+                }
+                
+                if (githubEnabled) {
+                    Button(
+                        onClick = { showGitHubDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("🔄 Sync to GitHub", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+    
+    // Diff dialog - shows before/after code or informational message
+    if (showDiffDialog) {
+        val hasCodeFix = suggestion.afterCode != null && suggestion.afterCode.isNotBlank()
+        val isInformational = !hasCodeFix
+        
+        AlertDialog(
+            onDismissRequest = { showDiffDialog = false },
+            title = { Text(suggestion.title) },
+            text = {
+                Column {
+                    if (isInformational) {
+                        // Show informational suggestion content
+                        Text("RECOMMENDATION:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF64B5F6))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF1E1E1E),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    suggestion.rationale,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFD4D4D4),
+                                    lineHeight = 18.sp
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    "ℹ️ This is a best practice recommendation that requires manual refactoring. " +
+                                    "Please review your code and apply the suggested changes manually.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF9E9E9E),
+                                    lineHeight = 16.sp
+                                )
+                                if (suggestion.beforeCode != null && suggestion.beforeCode.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("AFFECTED CODE:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFFFFB74D))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        suggestion.beforeCode,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFB0BEC5),
+                                        lineHeight = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Show before/after code diff
+                        Text("BEFORE:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFE57373))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF1E1E1E),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                suggestion.beforeCode ?: suggestion.rationale,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFFD4D4D4),
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Text("AFTER:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF81C784))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF1E1E1E),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                suggestion.afterCode!!,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFFD4D4D4),
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showDiffDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+    
+    // Apply confirmation dialog with file path input
+    if (showApplyConfirm) {
+        var targetFilePath by remember { mutableStateOf("") }
+        
+        AlertDialog(
+            onDismissRequest = { showApplyConfirm = false },
+            title = { Text("Apply Fix?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("This will apply the suggested fix:")
+                    
+                    Text(
+                        suggestion.title,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Text(
+                        suggestion.rationale,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    OutlinedTextField(
+                        value = targetFilePath,
+                        onValueChange = { targetFilePath = it },
+                        label = { Text("Target File Path", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. $repoPath/src/Main.kt", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    
+                    // Warning message
+                    Surface(
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("⚠️", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "A backup will be created. You can undo this change.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (targetFilePath.isNotBlank()) {
+                            viewModel.applyLocalFix(suggestion, targetFilePath)
+                            showApplyConfirm = false
+                        }
+                    },
+                    enabled = targetFilePath.isNotBlank()
+                ) {
+                    Text("Apply")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showApplyConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // GitHub sync dialog
+    if (showGitHubDialog) {
+        var owner by remember { mutableStateOf(com.kmpforge.debugforge.config.GitHubConfig.DEFAULT_OWNER) }
+        var repo by remember { mutableStateOf(com.kmpforge.debugforge.config.GitHubConfig.DEFAULT_REPO) }
+        var filePath by remember { mutableStateOf("") }
+        
+        AlertDialog(
+            onDismissRequest = { showGitHubDialog = false },
+            title = { Text("Sync Fix to GitHub") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = owner,
+                        onValueChange = { owner = it },
+                        label = { Text("Owner", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = repo,
+                        onValueChange = { repo = it },
+                        label = { Text("Repository", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = filePath,
+                        onValueChange = { filePath = it },
+                        label = { Text("File Path", fontSize = 12.sp) },
+                        placeholder = { Text("src/main/kotlin/File.kt", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    
+                    Text(
+                        "This will create a branch and pull request with the fix.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (owner.isNotBlank() && repo.isNotBlank() && filePath.isNotBlank()) {
+                            viewModel.applyFixViaGitHub(
+                                owner = owner,
+                                repo = repo,
+                                filePath = filePath,
+                                newContent = suggestion.afterCode ?: "",
+                                fixDescription = suggestion.title
+                            )
+                            showGitHubDialog = false
+                        }
+                    },
+                    enabled = owner.isNotBlank() && repo.isNotBlank() && filePath.isNotBlank()
+                ) {
+                    Text("Create PR")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGitHubDialog = false }) {
+                    Text("Cancel")
+                }            }
+        )
+    }
+}

@@ -1,0 +1,558 @@
+-- SQLDelight schema for DebugForge persistence
+-- Database: DebugForgeDatabase
+-- All tables use normalized paths (forward slashes) for cross-platform compatibility
+
+-- ============================================================================
+-- REPOSITORY METADATA
+-- ============================================================================
+
+CREATE TABLE repo_metadata (
+    repo_path TEXT NOT NULL PRIMARY KEY,
+    git_remote_url TEXT,
+    git_branch TEXT,
+    git_commit_hash TEXT,
+    last_indexed_at INTEGER NOT NULL,
+    kotlin_version TEXT,
+    gradle_version TEXT,
+    module_count INTEGER NOT NULL DEFAULT 0,
+    file_count INTEGER NOT NULL DEFAULT 0,
+    shared_code_percentage REAL NOT NULL DEFAULT 0.0
+);
+
+-- ============================================================================
+-- MODULES
+-- ============================================================================
+
+CREATE TABLE indexed_modules (
+    gradle_path TEXT NOT NULL PRIMARY KEY,
+    repo_path TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    absolute_path TEXT NOT NULL,
+    build_file_path TEXT,
+    is_kmp_module INTEGER NOT NULL DEFAULT 0,
+    has_common_main INTEGER NOT NULL DEFAULT 0,
+    module_type TEXT NOT NULL, -- 'app', 'library', 'test', 'multiplatform'
+    indexed_at INTEGER NOT NULL,
+    FOREIGN KEY (repo_path) REFERENCES repo_metadata(repo_path) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_modules_repo ON indexed_modules(repo_path);
+CREATE INDEX idx_modules_type ON indexed_modules(module_type);
+
+-- ============================================================================
+-- SOURCE SETS
+-- ============================================================================
+
+CREATE TABLE indexed_source_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    module_gradle_path TEXT NOT NULL,
+    name TEXT NOT NULL, -- 'commonMain', 'jvmMain', 'iosMain', etc.
+    platform TEXT NOT NULL, -- 'common', 'jvm', 'ios', 'js', 'native', 'wasm'
+    directory_path TEXT NOT NULL,
+    file_count INTEGER NOT NULL DEFAULT 0,
+    line_count INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (module_gradle_path) REFERENCES indexed_modules(gradle_path) ON DELETE CASCADE,
+    UNIQUE(module_gradle_path, name)
+);
+
+CREATE INDEX idx_sourcesets_module ON indexed_source_sets(module_gradle_path);
+CREATE INDEX idx_sourcesets_platform ON indexed_source_sets(platform);
+
+-- ============================================================================
+-- INDEXED FILES
+-- ============================================================================
+
+CREATE TABLE indexed_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    relative_path TEXT NOT NULL,
+    module_gradle_path TEXT NOT NULL,
+    source_set TEXT NOT NULL,
+    package_name TEXT,
+    file_hash TEXT NOT NULL,
+    line_count INTEGER NOT NULL,
+    last_indexed_at INTEGER NOT NULL,
+    has_expect_decls INTEGER NOT NULL DEFAULT 0,
+    has_actual_decls INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (module_gradle_path) REFERENCES indexed_modules(gradle_path) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_files_module ON indexed_files(module_gradle_path);
+CREATE INDEX idx_files_sourceset ON indexed_files(source_set);
+CREATE INDEX idx_files_package ON indexed_files(package_name);
+CREATE INDEX idx_files_hash ON indexed_files(file_hash);
+CREATE INDEX idx_files_expect ON indexed_files(has_expect_decls);
+CREATE INDEX idx_files_actual ON indexed_files(has_actual_decls);
+
+-- ============================================================================
+-- INDEXED SYMBOLS
+-- ============================================================================
+
+CREATE TABLE indexed_symbols (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    qualified_name TEXT NOT NULL,
+    kind TEXT NOT NULL, -- 'class', 'interface', 'object', 'function', 'property', 'typealias'
+    visibility TEXT NOT NULL DEFAULT 'public', -- 'public', 'internal', 'private', 'protected'
+    is_expect INTEGER NOT NULL DEFAULT 0,
+    is_actual INTEGER NOT NULL DEFAULT 0,
+    is_suspend INTEGER NOT NULL DEFAULT 0,
+    is_inline INTEGER NOT NULL DEFAULT 0,
+    is_data_class INTEGER NOT NULL DEFAULT 0,
+    is_sealed INTEGER NOT NULL DEFAULT 0,
+    is_companion INTEGER NOT NULL DEFAULT 0,
+    is_extension INTEGER NOT NULL DEFAULT 0,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_column INTEGER NOT NULL,
+    signature TEXT, -- For functions: "(param1: Type, param2: Type): ReturnType"
+    parent_symbol_id INTEGER,
+    annotations TEXT, -- JSON array of annotation names
+    FOREIGN KEY (file_id) REFERENCES indexed_files(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_symbol_id) REFERENCES indexed_symbols(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_symbols_file ON indexed_symbols(file_id);
+CREATE INDEX idx_symbols_name ON indexed_symbols(name);
+CREATE INDEX idx_symbols_qualified ON indexed_symbols(qualified_name);
+CREATE INDEX idx_symbols_kind ON indexed_symbols(kind);
+CREATE INDEX idx_symbols_expect ON indexed_symbols(is_expect);
+CREATE INDEX idx_symbols_actual ON indexed_symbols(is_actual);
+CREATE INDEX idx_symbols_parent ON indexed_symbols(parent_symbol_id);
+
+-- ============================================================================
+-- EXPECT/ACTUAL MAPPINGS
+-- ============================================================================
+
+CREATE TABLE expect_actual_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expect_symbol_id INTEGER NOT NULL,
+    actual_symbol_id INTEGER,
+    actual_platform TEXT, -- 'jvm', 'ios', 'js', etc. NULL if missing
+    is_missing INTEGER NOT NULL DEFAULT 0,
+    mismatch_reason TEXT, -- JSON describing mismatch if any
+    FOREIGN KEY (expect_symbol_id) REFERENCES indexed_symbols(id) ON DELETE CASCADE,
+    FOREIGN KEY (actual_symbol_id) REFERENCES indexed_symbols(id) ON DELETE CASCADE,
+    UNIQUE(expect_symbol_id, actual_platform)
+);
+
+CREATE INDEX idx_expect_actual_expect ON expect_actual_mappings(expect_symbol_id);
+CREATE INDEX idx_expect_actual_actual ON expect_actual_mappings(actual_symbol_id);
+CREATE INDEX idx_expect_actual_missing ON expect_actual_mappings(is_missing);
+
+-- ============================================================================
+-- SYMBOL REFERENCES
+-- ============================================================================
+
+CREATE TABLE symbol_references (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id INTEGER NOT NULL,
+    referencing_file_id INTEGER NOT NULL,
+    reference_line INTEGER NOT NULL,
+    reference_column INTEGER NOT NULL,
+    reference_type TEXT NOT NULL, -- 'call', 'type_use', 'import', 'inheritance', 'annotation'
+    FOREIGN KEY (symbol_id) REFERENCES indexed_symbols(id) ON DELETE CASCADE,
+    FOREIGN KEY (referencing_file_id) REFERENCES indexed_files(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_refs_symbol ON symbol_references(symbol_id);
+CREATE INDEX idx_refs_file ON symbol_references(referencing_file_id);
+CREATE INDEX idx_refs_type ON symbol_references(reference_type);
+
+-- ============================================================================
+-- DIAGNOSTICS (PERSISTED)
+-- ============================================================================
+
+CREATE TABLE persisted_diagnostics (
+    id TEXT NOT NULL PRIMARY KEY,
+    file_id INTEGER NOT NULL,
+    severity TEXT NOT NULL, -- 'error', 'warning', 'info', 'hint'
+    category TEXT NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL,
+    source_analyzer TEXT NOT NULL,
+    suggested_fix_json TEXT, -- JSON of DiagnosticFix
+    is_suppressed INTEGER NOT NULL DEFAULT 0,
+    suppression_reason TEXT,
+    detected_at INTEGER NOT NULL,
+    FOREIGN KEY (file_id) REFERENCES indexed_files(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_diag_file ON persisted_diagnostics(file_id);
+CREATE INDEX idx_diag_severity ON persisted_diagnostics(severity);
+CREATE INDEX idx_diag_category ON persisted_diagnostics(category);
+CREATE INDEX idx_diag_suppressed ON persisted_diagnostics(is_suppressed);
+
+-- ============================================================================
+-- REFACTOR SUGGESTIONS (PERSISTED)
+-- ============================================================================
+
+CREATE TABLE persisted_refactors (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    category TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    unified_diff TEXT NOT NULL,
+    changes_json TEXT NOT NULL, -- JSON array of FileChange
+    affected_files_json TEXT NOT NULL, -- JSON array of file paths
+    source TEXT NOT NULL,
+    is_applied INTEGER NOT NULL DEFAULT 0,
+    is_dismissed INTEGER NOT NULL DEFAULT 0,
+    dismissal_reason TEXT,
+    generated_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_refactor_category ON persisted_refactors(category);
+CREATE INDEX idx_refactor_priority ON persisted_refactors(priority);
+CREATE INDEX idx_refactor_applied ON persisted_refactors(is_applied);
+CREATE INDEX idx_refactor_dismissed ON persisted_refactors(is_dismissed);
+
+-- ============================================================================
+-- USER SETTINGS / PREFERENCES
+-- ============================================================================
+
+CREATE TABLE user_settings (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- ============================================================================
+-- CODE SHARING SNAPSHOTS (for trend analysis)
+-- ============================================================================
+
+CREATE TABLE sharing_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_path TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    total_files INTEGER NOT NULL,
+    common_files INTEGER NOT NULL,
+    platform_files INTEGER NOT NULL,
+    total_lines INTEGER NOT NULL,
+    common_lines INTEGER NOT NULL,
+    shared_percentage REAL NOT NULL,
+    per_module_json TEXT NOT NULL, -- JSON object with per-module stats
+    FOREIGN KEY (repo_path) REFERENCES repo_metadata(repo_path) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_sharing_repo ON sharing_snapshots(repo_path);
+CREATE INDEX idx_sharing_timestamp ON sharing_snapshots(timestamp);
+
+-- ============================================================================
+-- QUERIES
+-- ============================================================================
+
+-- Repository metadata queries
+getRepoMetadata:
+SELECT * FROM repo_metadata WHERE repo_path = ?;
+
+insertRepoMetadata:
+INSERT OR REPLACE INTO repo_metadata(
+    repo_path, git_remote_url, git_branch, git_commit_hash, 
+    last_indexed_at, kotlin_version, gradle_version, 
+    module_count, file_count, shared_code_percentage
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateSharedCodePercentage:
+UPDATE repo_metadata SET shared_code_percentage = ? WHERE repo_path = ?;
+
+deleteRepoMetadata:
+DELETE FROM repo_metadata WHERE repo_path = ?;
+
+-- Module queries
+getModulesForRepo:
+SELECT * FROM indexed_modules WHERE repo_path = ? ORDER BY gradle_path;
+
+getModule:
+SELECT * FROM indexed_modules WHERE gradle_path = ?;
+
+insertModule:
+INSERT OR REPLACE INTO indexed_modules(
+    gradle_path, repo_path, display_name, absolute_path, 
+    build_file_path, is_kmp_module, has_common_main, module_type, indexed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getKmpModules:
+SELECT * FROM indexed_modules WHERE repo_path = ? AND is_kmp_module = 1;
+
+deleteModulesForRepo:
+DELETE FROM indexed_modules WHERE repo_path = ?;
+
+-- Source set queries
+getSourceSetsForModule:
+SELECT * FROM indexed_source_sets WHERE module_gradle_path = ? ORDER BY name;
+
+insertSourceSet:
+INSERT OR REPLACE INTO indexed_source_sets(
+    module_gradle_path, name, platform, directory_path, file_count, line_count
+) VALUES (?, ?, ?, ?, ?, ?);
+
+getSourceSetsByPlatform:
+SELECT * FROM indexed_source_sets 
+WHERE module_gradle_path = ? AND platform = ?;
+
+-- File queries
+getFile:
+SELECT * FROM indexed_files WHERE path = ?;
+
+getFileById:
+SELECT * FROM indexed_files WHERE id = ?;
+
+getFilesInModule:
+SELECT * FROM indexed_files WHERE module_gradle_path = ? ORDER BY relative_path;
+
+getFilesInSourceSet:
+SELECT * FROM indexed_files 
+WHERE module_gradle_path = ? AND source_set = ? 
+ORDER BY relative_path;
+
+getFilesInSourceSets:
+SELECT * FROM indexed_files
+WHERE source_set IN ?
+ORDER BY relative_path;
+
+getFilesWithExpectDecls:
+SELECT * FROM indexed_files WHERE has_expect_decls = 1;
+
+getFilesWithActualDecls:
+SELECT * FROM indexed_files WHERE has_actual_decls = 1;
+
+insertFile:
+INSERT INTO indexed_files(
+    path, relative_path, module_gradle_path, source_set, 
+    package_name, file_hash, line_count, last_indexed_at,
+    has_expect_decls, has_actual_decls
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateFile:
+UPDATE indexed_files SET
+    package_name = ?, file_hash = ?, line_count = ?, 
+    last_indexed_at = ?, has_expect_decls = ?, has_actual_decls = ?
+WHERE path = ?;
+
+deleteFile:
+DELETE FROM indexed_files WHERE path = ?;
+
+deleteFilesNotIn:
+DELETE FROM indexed_files 
+WHERE module_gradle_path = ? AND path NOT IN ?;
+
+getFileCount:
+SELECT COUNT(*) FROM indexed_files WHERE module_gradle_path = ?;
+
+getTotalLineCount:
+SELECT SUM(line_count) FROM indexed_files WHERE module_gradle_path = ?;
+
+getCommonLineCount:
+SELECT SUM(line_count) FROM indexed_files 
+WHERE module_gradle_path = ? AND source_set = 'commonMain';
+
+-- Symbol queries
+getSymbol:
+SELECT * FROM indexed_symbols WHERE id = ?;
+
+getSymbolsInFile:
+SELECT * FROM indexed_symbols WHERE file_id = ? ORDER BY start_line;
+
+getSymbolByQualifiedName:
+SELECT * FROM indexed_symbols WHERE qualified_name = ?;
+
+getSymbolsByName:
+SELECT * FROM indexed_symbols WHERE name = ?;
+
+getExpectSymbols:
+SELECT s.*, f.path AS file_path, f.source_set
+FROM indexed_symbols s
+JOIN indexed_files f ON s.file_id = f.id
+WHERE s.is_expect = 1;
+
+getActualSymbols:
+SELECT s.*, f.path AS file_path, f.source_set
+FROM indexed_symbols s
+JOIN indexed_files f ON s.file_id = f.id
+WHERE s.is_actual = 1;
+
+getExpectSymbolsForFile:
+SELECT * FROM indexed_symbols 
+WHERE file_id = ? AND is_expect = 1;
+
+getActualSymbolsForFile:
+SELECT * FROM indexed_symbols 
+WHERE file_id = ? AND is_actual = 1;
+
+getSuspendFunctionsInFile:
+SELECT * FROM indexed_symbols 
+WHERE file_id = ? AND kind = 'function' AND is_suspend = 1;
+
+insertSymbol:
+INSERT INTO indexed_symbols(
+    file_id, name, qualified_name, kind, visibility,
+    is_expect, is_actual, is_suspend, is_inline, 
+    is_data_class, is_sealed, is_companion, is_extension,
+    start_line, end_line, start_column, end_column,
+    signature, parent_symbol_id, annotations
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteSymbolsForFile:
+DELETE FROM indexed_symbols WHERE file_id = ?;
+
+getClassSymbols:
+SELECT * FROM indexed_symbols 
+WHERE kind IN ('class', 'interface', 'object');
+
+getTopLevelFunctions:
+SELECT * FROM indexed_symbols 
+WHERE kind = 'function' AND parent_symbol_id IS NULL;
+
+-- Expect/Actual mapping queries
+getExpectActualMappings:
+SELECT * FROM expect_actual_mappings;
+
+getMappingsForExpect:
+SELECT * FROM expect_actual_mappings WHERE expect_symbol_id = ?;
+
+getMissingActuals:
+SELECT eam.*, es.name AS expect_name, es.qualified_name AS expect_qualified,
+       ef.path AS expect_file_path
+FROM expect_actual_mappings eam
+JOIN indexed_symbols es ON eam.expect_symbol_id = es.id
+JOIN indexed_files ef ON es.file_id = ef.id
+WHERE eam.is_missing = 1;
+
+insertExpectActualMapping:
+INSERT OR REPLACE INTO expect_actual_mappings(
+    expect_symbol_id, actual_symbol_id, actual_platform, 
+    is_missing, mismatch_reason
+) VALUES (?, ?, ?, ?, ?);
+
+deleteExpectActualMappingsForSymbol:
+DELETE FROM expect_actual_mappings WHERE expect_symbol_id = ?;
+
+-- Reference queries
+getReferencesToSymbol:
+SELECT sr.*, f.path AS file_path
+FROM symbol_references sr
+JOIN indexed_files f ON sr.referencing_file_id = f.id
+WHERE sr.symbol_id = ?;
+
+getReferencesInFile:
+SELECT sr.*, s.name AS symbol_name, s.qualified_name
+FROM symbol_references sr
+JOIN indexed_symbols s ON sr.symbol_id = s.id
+WHERE sr.referencing_file_id = ?;
+
+insertReference:
+INSERT INTO symbol_references(
+    symbol_id, referencing_file_id, reference_line, reference_column, reference_type
+) VALUES (?, ?, ?, ?, ?);
+
+deleteReferencesInFile:
+DELETE FROM symbol_references WHERE referencing_file_id = ?;
+
+-- Diagnostic queries
+getDiagnosticsForFile:
+SELECT * FROM persisted_diagnostics 
+WHERE file_id = ? AND is_suppressed = 0
+ORDER BY start_line;
+
+getAllDiagnostics:
+SELECT pd.*, f.path AS file_path
+FROM persisted_diagnostics pd
+JOIN indexed_files f ON pd.file_id = f.id
+WHERE pd.is_suppressed = 0
+ORDER BY f.path, pd.start_line;
+
+getDiagnosticsByCategory:
+SELECT pd.*, f.path AS file_path
+FROM persisted_diagnostics pd
+JOIN indexed_files f ON pd.file_id = f.id
+WHERE pd.category = ? AND pd.is_suppressed = 0;
+
+getDiagnosticsBySeverity:
+SELECT pd.*, f.path AS file_path
+FROM persisted_diagnostics pd
+JOIN indexed_files f ON pd.file_id = f.id
+WHERE pd.severity = ? AND pd.is_suppressed = 0;
+
+insertDiagnostic:
+INSERT OR REPLACE INTO persisted_diagnostics(
+    id, file_id, severity, category, code, title, message,
+    start_line, start_column, end_line, end_column,
+    source_analyzer, suggested_fix_json, is_suppressed, 
+    suppression_reason, detected_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+suppressDiagnostic:
+UPDATE persisted_diagnostics 
+SET is_suppressed = 1, suppression_reason = ?
+WHERE id = ?;
+
+deleteDiagnosticsForFile:
+DELETE FROM persisted_diagnostics WHERE file_id = ?;
+
+-- Refactor queries
+getPendingRefactors:
+SELECT * FROM persisted_refactors 
+WHERE is_applied = 0 AND is_dismissed = 0
+ORDER BY 
+    CASE priority 
+        WHEN 'critical' THEN 1 
+        WHEN 'high' THEN 2 
+        WHEN 'medium' THEN 3 
+        WHEN 'low' THEN 4 
+    END;
+
+getRefactorsByCategory:
+SELECT * FROM persisted_refactors 
+WHERE category = ? AND is_applied = 0 AND is_dismissed = 0;
+
+insertRefactor:
+INSERT OR REPLACE INTO persisted_refactors(
+    id, title, rationale, confidence, category, priority,
+    unified_diff, changes_json, affected_files_json, source,
+    is_applied, is_dismissed, dismissal_reason, generated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+markRefactorApplied:
+UPDATE persisted_refactors SET is_applied = 1 WHERE id = ?;
+
+dismissRefactor:
+UPDATE persisted_refactors 
+SET is_dismissed = 1, dismissal_reason = ?
+WHERE id = ?;
+
+-- Settings queries
+getSetting:
+SELECT value FROM user_settings WHERE key = ?;
+
+setSetting:
+INSERT OR REPLACE INTO user_settings(key, value, updated_at)
+VALUES (?, ?, ?);
+
+-- Sharing snapshot queries
+getLatestSharingSnapshot:
+SELECT * FROM sharing_snapshots 
+WHERE repo_path = ?
+ORDER BY timestamp DESC
+LIMIT 1;
+
+getSharingHistory:
+SELECT * FROM sharing_snapshots 
+WHERE repo_path = ?
+ORDER BY timestamp DESC
+LIMIT ?;
+
+insertSharingSnapshot:
+INSERT INTO sharing_snapshots(
+    repo_path, timestamp, total_files, common_files, platform_files,
+    total_lines, common_lines, shared_percentage, per_module_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
