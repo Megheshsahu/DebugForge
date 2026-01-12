@@ -32,6 +32,11 @@ kotlin {
     // }
     
     sourceSets {
+                val commonTest by getting {
+                    dependencies {
+                        implementation(kotlin("test"))
+                    }
+                }
         val commonMain by getting {
             dependencies {
                 implementation(compose.runtime)
@@ -63,6 +68,7 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation("io.ktor:ktor-client-cio:2.3.7")
+                implementation(project(":shared"))
             }
         }
         
@@ -71,6 +77,7 @@ kotlin {
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
                 implementation("androidx.activity:activity-compose:1.8.2")
                 implementation("androidx.documentfile:documentfile:1.0.1")
+                implementation("androidx.security:security-crypto:1.1.0-alpha06")
                 implementation(compose.uiTooling)
             }
         }
@@ -106,6 +113,11 @@ android {
     packaging {
         resources {
             excludes += "kotlin/**"
+            pickFirsts += "META-INF/INDEX.LIST"
+            pickFirsts += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/*.kotlin_module"
+            // Exclude shared module classes to avoid duplicates
+            excludes += "com/kmpforge/debugforge/**"
         }
     }
 

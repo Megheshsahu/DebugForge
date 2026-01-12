@@ -13,14 +13,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 @Composable
 fun App() {
+    println("App composable entered")
     val viewModel = remember { DebugForgeViewModel() }
     val uiState by viewModel.uiState.collectAsState()
+    println("uiState: $uiState")
     
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -39,6 +43,7 @@ fun App() {
         ) {
             when (val state = uiState) {
                 is UiState.Idle -> RepoInputScreen(viewModel)
+                is UiState.Settings -> SettingsScreen(viewModel)
                 is UiState.Loading -> LoadingScreen(state.message)
                 is UiState.Ready -> WorkspaceScreen(state, viewModel)
                 is UiState.Error -> ErrorScreen(state.message, viewModel)
@@ -58,8 +63,20 @@ fun RepoInputScreen(viewModel: DebugForgeViewModel) {
             .fillMaxSize()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Top
     ) {
+        // Header with settings button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            IconButton(onClick = { viewModel.navigateToSettings() }) {
+                Text("⚙️", fontSize = 24.sp)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
         // Logo
         Surface(
             modifier = Modifier.size(80.dp),
@@ -1005,5 +1022,198 @@ fun SuggestionCard(
                     Text("Cancel")
                 }            }
         )
+    }
+}
+
+@Composable
+fun SettingsScreen(viewModel: DebugForgeViewModel) {
+    var groqApiKey by remember { mutableStateOf("") }
+    var githubToken by remember { mutableStateOf("") }
+    var showGroqKey by remember { mutableStateOf(false) }
+    var showGithubKey by remember { mutableStateOf(false) }
+    
+    // Load current config
+    LaunchedEffect(Unit) {
+        val config = viewModel.getApiConfig()
+        groqApiKey = config["groqApiKey"] ?: ""
+        githubToken = config["githubToken"] ?: ""
+    }
+    
+    val isServerRunning by viewModel.isServerRunning.collectAsState()
+    val isBackendConnected by viewModel.isBackendConnected.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            
+            IconButton(onClick = { viewModel.navigateBack() }) {
+                Text("✕", fontSize = 20.sp)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // API Configuration Section
+        Text(
+            "API Configuration",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Groq API Key
+                Text(
+                    "Groq API Key (for AI Analysis)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextField(
+                        value = groqApiKey,
+                        onValueChange = { groqApiKey = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Enter your Groq API key") },
+                        visualTransformation = if (showGroqKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    
+                    IconButton(onClick = { showGroqKey = !showGroqKey }) {
+                        Text(if (showGroqKey) "🙈" else "👁️", fontSize = 20.sp)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // GitHub Token
+                Text(
+                    "GitHub Personal Access Token (for PR creation)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextField(
+                        value = githubToken,
+                        onValueChange = { githubToken = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Enter your GitHub token") },
+                        visualTransformation = if (showGithubKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    
+                    IconButton(onClick = { showGithubKey = !showGithubKey }) {
+                        Text(if (showGithubKey) "🙈" else "👁️", fontSize = 20.sp)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Save Button
+                Button(
+                    onClick = {
+                        viewModel.saveApiConfig(groqApiKey, githubToken)
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Save Configuration")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Server Control Button
+                Button(
+                    onClick = { 
+                        if (isServerRunning) {
+                            viewModel.stopServer()
+                        } else {
+                            viewModel.startServer()
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(if (isServerRunning) "Stop Server" else "Start Server")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Server Status
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isBackendConnected) Color(0xFF10B981) else Color(0xFFEF4444))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isBackendConnected) "Backend online" else "Backend offline", color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Info Section
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "How to get API keys:",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    "• Groq API Key: Visit https://console.groq.com/ to get your API key for AI-powered code analysis",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text(
+                    "• GitHub Token: Go to GitHub Settings → Developer settings → Personal access tokens to create a token with repo permissions",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
     }
 }

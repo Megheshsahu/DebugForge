@@ -1,10 +1,10 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="48dp"
     android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
+    <!-- DebugForge DF Monogram Logo (stylized, dark blue) -->
     <path
-        android:fillColor="#7C3AED"
-        android:pathData="M24,4a20,20 0 1,0 0,40a20,20 0 1,0 0,-40zM24,8a16,16 0 1,1 0,32a16,16 0 1,1 0,-32z"/>
+        android:fillColor="#142A43"
+        android:pathData="M8,8 L40,8 L40,40 L8,40 Z M16,16 L32,16 L32,32 L16,32 Z M20,20 L28,20 L28,28 L20,28 Z"/>
 </vector>

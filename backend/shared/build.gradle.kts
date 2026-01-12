@@ -24,6 +24,16 @@ kotlin {
                 implementation("com.google.devtools.ksp:symbol-processing-api:1.9.22-1.0.17")
                 implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.23")
                 implementation("io.ktor:ktor-client-cio:2.3.7")
+                
+                // Ktor Server for embedded server
+                implementation("io.ktor:ktor-server-core:2.3.7")
+                implementation("io.ktor:ktor-server-netty:2.3.7")
+                implementation("io.ktor:ktor-server-content-negotiation:2.3.7")
+                implementation("io.ktor:ktor-server-websockets:2.3.7")
+                implementation("io.ktor:ktor-server-cors:2.3.7")
+                implementation("io.ktor:ktor-server-compression:2.3.7")
+                implementation("io.ktor:ktor-server-status-pages:2.3.7")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
             }
         }
         

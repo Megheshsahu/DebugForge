@@ -155,7 +155,7 @@ data class AIAnalysisResult(
 )
 
 class DebugForgeApiClient {
-    private val baseUrl = "http://localhost:8765"
+    private val baseUrl = "http://localhost:18999"
     
     private val httpClient = HttpClient {
         install(ContentNegotiation) {
@@ -178,7 +178,7 @@ class DebugForgeApiClient {
     suspend fun loadRepo(path: String): LoadResult {
         return try {
             // Start the load operation
-            val response: HttpResponse = httpClient.post("$baseUrl/api/repo/load") {
+            val response: HttpResponse = httpClient.post("$baseUrl/repo/load") {
                 contentType(ContentType.Application.Json)
                 setBody(LoadRepoRequest(path))
             }
@@ -195,7 +195,7 @@ class DebugForgeApiClient {
                 delay(1000)
                 attempts++
                 
-                val stateResponse: HttpResponse = httpClient.get("$baseUrl/api/state")
+                val stateResponse: HttpResponse = httpClient.get("$baseUrl/state")
                 if (!stateResponse.status.isSuccess()) continue
                 
                 val stateJson: JsonObject = stateResponse.body()
@@ -231,7 +231,7 @@ class DebugForgeApiClient {
     suspend fun cloneRepo(url: String, localPath: String): CloneResult {
         return try {
             // Start the clone operation
-            val response: HttpResponse = httpClient.post("$baseUrl/api/repo/clone") {
+            val response: HttpResponse = httpClient.post("$baseUrl/repo/clone") {
                 contentType(ContentType.Application.Json)
                 setBody(CloneRepoRequest(url, localPath))
             }
@@ -248,7 +248,7 @@ class DebugForgeApiClient {
                 delay(1000) // Wait 1 second between polls
                 attempts++
                 
-                val stateResponse: HttpResponse = httpClient.get("$baseUrl/api/state")
+                val stateResponse: HttpResponse = httpClient.get("$baseUrl/state")
                 if (!stateResponse.status.isSuccess()) continue
                 
                 val stateJson: JsonObject = stateResponse.body()
@@ -290,7 +290,7 @@ class DebugForgeApiClient {
     
     suspend fun runAnalysis(repoId: String): Boolean {
         return try {
-            val response: HttpResponse = httpClient.post("$baseUrl/api/repo/$repoId/analyze")
+            val response: HttpResponse = httpClient.post("$baseUrl/repo/$repoId/analyze")
             response.status.isSuccess()
         } catch (e: Exception) {
             println("Error running analysis: ${e.message}")
@@ -300,7 +300,7 @@ class DebugForgeApiClient {
     
     suspend fun getDiagnostics(repoId: String): List<DiagnosticDisplay> {
         return try {
-            val response: List<DiagnosticResponse> = httpClient.get("$baseUrl/api/repo/$repoId/diagnostics").body()
+            val response: List<DiagnosticResponse> = httpClient.get("$baseUrl/repo/$repoId/diagnostics").body()
             response.map { 
                 DiagnosticDisplay(
                     id = it.id,
@@ -320,7 +320,7 @@ class DebugForgeApiClient {
     
     suspend fun getModules(repoId: String): List<ModuleDisplay> {
         return try {
-            val response: List<ModuleResponse> = httpClient.get("$baseUrl/api/repo/$repoId/modules").body()
+            val response: List<ModuleResponse> = httpClient.get("$baseUrl/repo/$repoId/modules").body()
             response.map {
                 ModuleDisplay(
                     name = it.name,
@@ -337,7 +337,7 @@ class DebugForgeApiClient {
     
     suspend fun getSuggestions(repoId: String): List<SuggestionDisplay> {
         return try {
-            val response: List<SuggestionResponse> = httpClient.get("$baseUrl/api/repo/$repoId/suggestions").body()
+            val response: List<SuggestionResponse> = httpClient.get("$baseUrl/repo/$repoId/suggestions").body()
             response.map {
                 SuggestionDisplay(
                     id = it.id,
@@ -355,7 +355,7 @@ class DebugForgeApiClient {
     
     suspend fun getMetrics(repoId: String): MetricsDisplay? {
         return try {
-            val response: MetricsResponse = httpClient.get("$baseUrl/api/repo/$repoId/metrics").body()
+            val response: MetricsResponse = httpClient.get("$baseUrl/repo/$repoId/metrics").body()
             MetricsDisplay(
                 totalFiles = 0,
                 totalLines = response.totalLinesOfCode,
@@ -370,7 +370,7 @@ class DebugForgeApiClient {
     // Global state endpoints (used after clone completes)
     suspend fun getGlobalDiagnostics(): List<DiagnosticDisplay> {
         return try {
-            val response: List<DiagnosticResponse> = httpClient.get("$baseUrl/api/diagnostics").body()
+            val response: List<DiagnosticResponse> = httpClient.get("$baseUrl/diagnostics").body()
             response.map { 
                 DiagnosticDisplay(
                     id = it.id,
@@ -390,7 +390,7 @@ class DebugForgeApiClient {
     
     suspend fun getGlobalModules(): List<ModuleDisplay> {
         return try {
-            val response: List<ModuleResponse> = httpClient.get("$baseUrl/api/modules").body()
+            val response: List<ModuleResponse> = httpClient.get("$baseUrl/modules").body()
             response.map {
                 ModuleDisplay(
                     name = it.name,
@@ -407,7 +407,7 @@ class DebugForgeApiClient {
     
     suspend fun getGlobalSuggestions(): List<SuggestionDisplay> {
         return try {
-            val response: List<SuggestionResponse> = httpClient.get("$baseUrl/api/refactors").body()
+            val response: List<SuggestionResponse> = httpClient.get("$baseUrl/refactors").body()
             response.map { suggestion ->
                 // Extract before/after code from unified diff if available
                 val (beforeCode, afterCode) = extractBeforeAfterFromUnifiedDiff(suggestion.unifiedDiff)
@@ -460,7 +460,7 @@ class DebugForgeApiClient {
     
     suspend fun getGlobalMetrics(): MetricsDisplay? {
         return try {
-            val response: MetricsResponse = httpClient.get("$baseUrl/api/metrics").body()
+            val response: MetricsResponse = httpClient.get("$baseUrl/metrics").body()
             MetricsDisplay(
                 totalFiles = 0, // Not in response, use modules for this
                 totalLines = response.totalLinesOfCode,
@@ -483,7 +483,7 @@ class DebugForgeApiClient {
         context: String = "KMP Project"
     ): AIAnalysisResult {
         return try {
-            val httpResponse = httpClient.post("$baseUrl/api/ai/analyze") {
+            val httpResponse = httpClient.post("$baseUrl/ai/analyze") {
                 contentType(ContentType.Application.Json)
                 setBody(AIAnalyzeRequest(
                     code = code,
@@ -529,7 +529,7 @@ class DebugForgeApiClient {
      */
     suspend fun analyzeFileWithAI(filePath: String, context: String = "KMP Project"): AIAnalysisResult {
         return try {
-            val httpResponse = httpClient.post("$baseUrl/api/ai/analyze") {
+            val httpResponse = httpClient.post("$baseUrl/ai/analyze") {
                 contentType(ContentType.Application.Json)
                 setBody(AIAnalyzeRequest(
                     code = "",

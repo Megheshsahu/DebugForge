@@ -23,6 +23,7 @@ expect fun getTempDir(): String
 // UI State
 sealed class UiState {
     data object Idle : UiState()
+    data object Settings : UiState()
     data class Loading(val message: String) : UiState()
     data class Ready(
         val repoId: String,
@@ -62,13 +63,13 @@ data class SuggestionDisplay(
 )
 
 class DebugForgeViewModel {
+    private val _isServerRunning = MutableStateFlow(false)
+    val isServerRunning: StateFlow<Boolean> = _isServerRunning.asStateFlow()
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val apiClient = DebugForgeApiClient()
     private val fileSystem = PlatformFileSystem()
-    
     // Undo/Redo manager for reverting applied fixes
     val undoManager = UndoManager()
-    
     private val httpClient = HttpClient {
         install(ContentNegotiation) {
             json(Json {
@@ -77,33 +78,75 @@ class DebugForgeViewModel {
             })
         }
     }
-    
     private val githubService: GitHubService? = if (GitHubConfig.ENABLE_GITHUB_SYNC && GitHubConfig.GITHUB_TOKEN.isNotEmpty()) {
         GitHubService(GitHubConfig.GITHUB_TOKEN, httpClient)
     } else null
-    
     private val syncManager: SyncManager? = githubService?.let { SyncManager(it) }
-    
     private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
-    
     private val _isBackendConnected = MutableStateFlow(false)
     val isBackendConnected: StateFlow<Boolean> = _isBackendConnected.asStateFlow()
-    
     private val _githubSyncEnabled = MutableStateFlow(GitHubConfig.ENABLE_GITHUB_SYNC)
     val githubSyncEnabled: StateFlow<Boolean> = _githubSyncEnabled.asStateFlow()
-    
     private val _syncStatus = MutableStateFlow<String?>(null)
     val syncStatus: StateFlow<String?> = _syncStatus.asStateFlow()
-    
     private val _aiAnalysisEnabled = MutableStateFlow(true)
     val aiAnalysisEnabled: StateFlow<Boolean> = _aiAnalysisEnabled.asStateFlow()
-    
     private val _aiSuggestions = MutableStateFlow<List<SuggestionDisplay>>(emptyList())
     val aiSuggestions: StateFlow<List<SuggestionDisplay>> = _aiSuggestions.asStateFlow()
     
+    /**
+     * Save API configuration
+     */
+    private val secureStorage: SecureStorage = createSecureStorage()
+
     init {
-        checkBackendConnection()
+        // Start server automatically on app startup
+        startServer()
+    }
+    fun startServer() {
+        // Prevent starting server multiple times
+        if (_isServerRunning.value) {
+            _syncStatus.value = "ℹ️ Server is already running"
+            return
+        }
+        
+        _syncStatus.value = "Starting server..."
+        val groqApiKey = secureStorage.getString("groqApiKey") ?: ""
+        val githubToken = secureStorage.getString("githubToken") ?: ""
+        _syncStatus.value = "API keys loaded: groq=${groqApiKey.isNotBlank()}, github=${githubToken.isNotBlank()}"
+
+        // Server can start even without API keys, but warn user
+        if (groqApiKey.isBlank()) {
+            _syncStatus.value = "⚠️ Warning: No Groq API key configured. AI analysis will be limited."
+        }
+
+        startServerPlatform(this, groqApiKey, githubToken)
+        // Delay to let server start
+        scope.launch {
+            _syncStatus.value = "⏳ Waiting for server to start..."
+            kotlinx.coroutines.delay(5000) // Increased delay
+            val running = isServerRunningPlatform(this@DebugForgeViewModel)
+            println("DEBUG: Server running check result: $running")
+            if (running) {
+                _syncStatus.value = "✅ Server started successfully on port 18999"
+                _isServerRunning.value = true
+                // Update backend connection status
+                checkBackendConnection()
+            } else {
+                _syncStatus.value = "❌ Server failed to start - check logs"
+                _isServerRunning.value = false
+                _isBackendConnected.value = false
+            }
+        }
+    }
+    fun stopServer() {
+        stopServerPlatform(this)
+        _isServerRunning.value = false
+        _isBackendConnected.value = false
+    }
+    fun setServerRunning(running: Boolean) {
+        _isServerRunning.value = running
     }
     
     private fun checkBackendConnection() {
@@ -643,4 +686,43 @@ class DebugForgeViewModel {
             appendLine(after)
         }
     }
+    
+    /**
+     * Navigate to settings screen
+     */
+    fun navigateToSettings() {
+        _uiState.value = UiState.Settings
+    }
+    
+    /**
+     * Navigate back to previous screen
+     */
+    fun navigateBack() {
+        // For now, just go to Idle. Could be enhanced to remember previous state
+        _uiState.value = UiState.Idle
+    }
+    
+    fun saveApiConfig(groqApiKey: String, githubToken: String = "") {
+        secureStorage.saveString("groqApiKey", groqApiKey)
+        secureStorage.saveString("githubToken", githubToken)
+        _syncStatus.value = "⚙️ API configuration saved"
+        navigateBack()
+    }
+
+    /**
+     * Get current API configuration (for display)
+     */
+    fun getApiConfig(): Map<String, String> {
+        val groq = secureStorage.getString("groqApiKey") ?: ""
+        val github = secureStorage.getString("githubToken") ?: ""
+        return mapOf(
+            "groqApiKey" to groq,
+            "githubToken" to github
+        )
+    }
 }
+
+// Platform-specific server control hooks
+expect fun startServerPlatform(viewModel: DebugForgeViewModel, groqApiKey: String, githubToken: String): Boolean
+expect fun stopServerPlatform(viewModel: DebugForgeViewModel)
+expect fun isServerRunningPlatform(viewModel: DebugForgeViewModel): Boolean
