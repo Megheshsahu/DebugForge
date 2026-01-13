@@ -33,8 +33,6 @@ DebugForge is a Kotlin Multiplatform application for analyzing and fixing issues
 
 ```bash
 git clone https://github.com/your-username/debugforge.git
-cd debugforge
-```
 
 ### 2. Build the Project
 
@@ -54,12 +52,6 @@ cd backend
 ./gradlew :composeApp:createDistributable  # Desktop distributable
 ```
 
-#### On Linux/macOS:
-
-```bash
-cd backend
-./gradlew build
-```
 
 ### 3. Desktop Application Setup
 
