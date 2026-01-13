@@ -8,6 +8,12 @@
 
 DebugForge is a Kotlin Multiplatform application for analyzing and fixing issues in Kotlin Multiplatform projects. It provides AI-powered code analysis, automated refactoring suggestions, and seamless integration with GitHub for collaborative development.
 
+## System Architecture & Data Flow
+
+![System Architecture & Data Flow](assets/data-flow-diagram.png)
+
+*This diagram shows the complete workflow, data flow, and component interactions for DebugForge across all platforms.*
+
 ## Features
 
 - **Multiplatform Support**: Runs on Desktop (Windows), Android, and Web (WASM)
