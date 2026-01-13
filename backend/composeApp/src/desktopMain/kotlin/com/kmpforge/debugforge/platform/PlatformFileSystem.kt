@@ -29,8 +29,34 @@ actual class PlatformFileSystem {
     actual fun getFileName(path: String): String = File(path).name
 
     actual suspend fun pickProjectFolder(): String? = suspendCancellableCoroutine { continuation ->
-        // For desktop, we could show a file chooser dialog
-        // For now, return null as this is a placeholder
-        continuation.resume(null)
+        try {
+            // Use Swing JFileChooser for desktop file selection
+            javax.swing.SwingUtilities.invokeLater {
+                val fileChooser = javax.swing.JFileChooser().apply {
+                    fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
+                    dialogTitle = "Select Kotlin Multiplatform Project Directory"
+                    approveButtonText = "Select Project"
+                    approveButtonToolTipText = "Select the root directory of your KMP project"
+
+                    // Set current directory to a reasonable default
+                    currentDirectory = java.io.File(System.getProperty("user.home"))
+                }
+
+                val result = fileChooser.showOpenDialog(null)
+                if (result == javax.swing.JFileChooser.APPROVE_OPTION) {
+                    val selectedFile = fileChooser.selectedFile
+                    if (selectedFile != null && selectedFile.isDirectory) {
+                        continuation.resume(selectedFile.absolutePath)
+                    } else {
+                        continuation.resume(null)
+                    }
+                } else {
+                    continuation.resume(null)
+                }
+            }
+        } catch (e: Exception) {
+            println("Error opening file chooser: ${e.message}")
+            continuation.resume(null)
+        }
     }
 }

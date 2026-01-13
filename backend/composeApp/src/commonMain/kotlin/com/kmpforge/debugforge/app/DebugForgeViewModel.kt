@@ -102,7 +102,7 @@ class DebugForgeViewModel {
 
     init {
         // Start server automatically on app startup
-        startServer()
+        // startServer()  // Commented out to prevent automatic server cycling
     }
     fun startServer() {
         // Prevent starting server multiple times
@@ -121,11 +121,18 @@ class DebugForgeViewModel {
             _syncStatus.value = "⚠️ Warning: No Groq API key configured. AI analysis will be limited."
         }
 
-        startServerPlatform(this, groqApiKey, githubToken)
+        val serverStarted = startServerPlatform(this, groqApiKey, githubToken)
+        if (!serverStarted) {
+            _syncStatus.value = "❌ Failed to start server - check logs for details"
+            _isServerRunning.value = false
+            _isBackendConnected.value = false
+            return
+        }
+        
         // Delay to let server start
         scope.launch {
             _syncStatus.value = "⏳ Waiting for server to start..."
-            kotlinx.coroutines.delay(5000) // Increased delay
+            kotlinx.coroutines.delay(2000) // Reduced delay since we know server started
             val running = isServerRunningPlatform(this@DebugForgeViewModel)
             println("DEBUG: Server running check result: $running")
             if (running) {
@@ -134,7 +141,7 @@ class DebugForgeViewModel {
                 // Update backend connection status
                 checkBackendConnection()
             } else {
-                _syncStatus.value = "❌ Server failed to start - check logs"
+                _syncStatus.value = "❌ Server failed to bind to port - check if port 18999 is available"
                 _isServerRunning.value = false
                 _isBackendConnected.value = false
             }

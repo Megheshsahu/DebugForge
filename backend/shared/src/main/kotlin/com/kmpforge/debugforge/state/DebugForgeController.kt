@@ -122,6 +122,7 @@ class DebugForgeController(
      */
     suspend fun loadRepository(path: String) {
         val now = Clock.System.now().toEpochMilliseconds()
+        println("DEBUG: Starting loadRepository for path: $path")
         _state.update { it.copy(
             repoStatus = RepoStatus.Loading(path = path, filesScanned = 0)
         ) }
@@ -132,6 +133,7 @@ class DebugForgeController(
                 when (loadingState) {
                     is LoadingState.Idle -> {}
                     is LoadingState.InProgress -> {
+                        println("DEBUG: Loading progress: ${loadingState.operation} - ${loadingState.progress}")
                         _state.update { it.copy(
                             repoStatus = RepoStatus.Loading(
                                 path = path,
@@ -140,9 +142,11 @@ class DebugForgeController(
                         ) }
                     }
                     is LoadingState.Completed -> {
+                        println("DEBUG: Loading completed")
                         // Will be handled in main flow
                     }
                     is LoadingState.Error -> {
+                        println("DEBUG: Loading error: ${loadingState.message}")
                         _state.update { it.copy(
                             repoStatus = RepoStatus.Failed(
                                 error = loadingState.message,
@@ -160,15 +164,18 @@ class DebugForgeController(
         }
         
         try {
+            println("DEBUG: Step 1: Loading and parsing repository")
             // Step 1: Load and parse repository
             val result = repoLoader.loadLocalRepository(path)
             val parsedRepo = result.getOrThrow()
+            println("DEBUG: Repository parsed successfully. Modules: ${parsedRepo.modules.size}, Kotlin files: ${parsedRepo.kotlinFiles.size}")
             
             // Convert to ModuleInfo list
             val modules = parsedRepo.modules.map { module ->
                 convertToModuleInfo(module)
             }
             
+            println("DEBUG: Step 2: Starting indexing")
             _state.update { it.copy(
                 modules = modules,
                 repoStatus = RepoStatus.Indexing(
@@ -180,7 +187,9 @@ class DebugForgeController(
             
             // Step 2: Index the repository
             val indexResult = projectIndexer.index(parsedRepo)
+            println("DEBUG: Indexing completed")
             
+            println("DEBUG: Step 3: Starting analysis")
             // Step 3: Analyze for diagnostics
             _state.update { it.copy(
                 repoStatus = RepoStatus.Analyzing(
@@ -191,20 +200,25 @@ class DebugForgeController(
             
             diagnosticEngine.analyze(path)
             val diagnostics = diagnosticEngine.diagnostics.value
+            println("DEBUG: Analysis completed. Diagnostics: ${diagnostics.size}")
             
             // Emit all diagnostics
             for (diagnostic in diagnostics) {
                 diagnosticEmitter.emit(diagnostic)
             }
             
+            println("DEBUG: Step 4: Generating refactoring suggestions")
             // Step 4: Generate refactoring suggestions
             val suggestions = refactorEngine.analyzeForRefactoring(path)
             val diagnosticSuggestions = refactorEngine.generateFromDiagnostics(diagnostics)
             val allSuggestions = (suggestions + diagnosticSuggestions).distinctBy { it.id }
+            println("DEBUG: Refactoring suggestions generated: ${allSuggestions.size}")
             
+            println("DEBUG: Step 5: Calculating shared code metrics")
             // Step 5: Calculate shared code metrics
             val sharedCodeMetrics = calculateSharedCodeMetrics(modules)
             
+            println("DEBUG: Updating final state")
             // Update final state
             _state.update { it.copy(
                 modules = modules,
@@ -223,7 +237,11 @@ class DebugForgeController(
                 lastUpdated = Clock.System.now().toEpochMilliseconds()
             ) }
             
+            println("DEBUG: Repository load completed successfully")
+            
         } catch (e: Exception) {
+            println("DEBUG: Exception during repository load: ${e.message}")
+            e.printStackTrace()
             _state.update { it.copy(
                 repoStatus = RepoStatus.Failed(
                     error = e.message ?: "Unknown error",

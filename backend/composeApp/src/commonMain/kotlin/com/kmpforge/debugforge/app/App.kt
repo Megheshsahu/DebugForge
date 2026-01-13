@@ -18,6 +18,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import com.kmpforge.debugforge.platform.PlatformFileSystem
+import com.kmpforge.debugforge.config.GitHubConfig
 
 @Composable
 fun App() {
@@ -54,8 +56,8 @@ fun App() {
 
 @Composable
 fun RepoInputScreen(viewModel: DebugForgeViewModel) {
-    var repoPath by remember { mutableStateOf("") }
-    val fileSystem = remember { com.kmpforge.debugforge.platform.PlatformFileSystem() }
+    var repoPath by remember { mutableStateOf("d:\\Projects\\kotlin project\\kmp-forge-main\\backend") }
+    val fileSystem = remember { PlatformFileSystem() }
     val scope = rememberCoroutineScope()
     
     Column(
@@ -959,8 +961,8 @@ fun SuggestionCard(
     
     // GitHub sync dialog
     if (showGitHubDialog) {
-        var owner by remember { mutableStateOf(com.kmpforge.debugforge.config.GitHubConfig.DEFAULT_OWNER) }
-        var repo by remember { mutableStateOf(com.kmpforge.debugforge.config.GitHubConfig.DEFAULT_REPO) }
+        var owner by remember { mutableStateOf(GitHubConfig.DEFAULT_OWNER) }
+        var repo by remember { mutableStateOf(GitHubConfig.DEFAULT_REPO) }
         var filePath by remember { mutableStateOf("") }
         
         AlertDialog(

@@ -1,6 +1,6 @@
 package com.kmpforge.debugforge.platform
 
-expect class PlatformFileSystem {
+expect class PlatformFileSystem() {
     fun exists(path: String): Boolean
     fun readFile(path: String): String
     fun writeFile(path: String, content: String)

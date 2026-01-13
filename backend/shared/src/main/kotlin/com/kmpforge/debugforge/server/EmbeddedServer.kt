@@ -168,9 +168,16 @@ fun Application.configureServer(scope: CoroutineScope, groqApiKey: String? = nul
             call.respond(mapOf("status" to "ok", "version" to "1.0.0"))
         }
 
+        // State endpoint
+        get("/state") {
+            println("DEBUG: /state endpoint called")
+            call.respond(controller.state.value)
+        }
+
         post("/repo/clone") {
             try {
                 val request = call.receive<CloneRepoRequest>()
+                println("DEBUG: /repo/clone called with url: ${request.url}, localPath: ${request.localPath}")
                 scope.launch {
                     controller.cloneRepository(request.url, request.localPath)
                 }
@@ -191,15 +198,38 @@ fun Application.configureServer(scope: CoroutineScope, groqApiKey: String? = nul
         post("/repo/load") {
             try {
                 val request = call.receive<LoadRepoRequest>()
+                val path = request.path.trim()
+                println("DEBUG: /repo/load called with path: '$path'")
+                
+                // Basic validation
+                if (path.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, LoadRepoResponse(
+                        success = false,
+                        message = "Repository path cannot be empty",
+                        error = "EMPTY_PATH"
+                    ))
+                    return@post
+                }
+                
+                if (path.contains("lastModified=") || path.contains("FileSnapshot")) {
+                    call.respond(HttpStatusCode.BadRequest, LoadRepoResponse(
+                        success = false,
+                        message = "Invalid repository path format",
+                        error = "INVALID_PATH_FORMAT"
+                    ))
+                    return@post
+                }
+                
                 scope.launch {
-                    controller.loadRepository(request.path)
+                    controller.loadRepository(path)
                 }
                 call.respond(LoadRepoResponse(
                     success = true,
                     message = "Repository load started",
-                    repoId = request.path
+                    repoId = path
                 ))
             } catch (e: Exception) {
+                println("DEBUG: /repo/load failed: ${e.message}")
                 call.respond(HttpStatusCode.InternalServerError, LoadRepoResponse(
                     success = false,
                     message = "Failed to start repository load",
@@ -337,6 +367,31 @@ Return a JSON object with this exact format:
         post("/error/clear") {
             controller.clearError()
             call.respond(HttpStatusCode.OK, mapOf("status" to "cleared"))
+        }
+
+        // Get modules
+        get("/modules") {
+            call.respond(controller.state.value.modules)
+        }
+
+        // Get diagnostics
+        get("/diagnostics") {
+            call.respond(controller.state.value.diagnostics)
+        }
+
+        // Get refactoring suggestions
+        get("/refactors") {
+            call.respond(controller.state.value.refactorSuggestions)
+        }
+
+        // Get shared code metrics
+        get("/metrics") {
+            call.respond(controller.state.value.sharedCodeMetrics)
+        }
+
+        // Get previews
+        get("/previews") {
+            call.respond(controller.state.value.previews)
         }
     }
 }
