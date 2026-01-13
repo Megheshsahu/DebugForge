@@ -250,32 +250,6 @@ Open `http://localhost:8080` in a modern browser.
 - Server: Check port 18999 with `netstat -ano | findstr :18999`
 - API Testing: Use `curl http://localhost:18999/health` to test server connectivity
 
-## Current Status
-
-### ✅ Working Features
-- **Repository Loading**: Successfully loads and analyzes KMP projects
-- **File Picker**: Native file selection dialogs for each platform
-- **Diagnostics Engine**: Detects 1 diagnostic (WASM threading issues)
-- **AI Suggestions**: Generates 4 refactoring suggestions
-- **Embedded Server**: Complete REST API with all endpoints functional
-- **Multiplatform UI**: Consistent interface across Desktop, Android, and Web
-- **State Management**: Reactive UI updates with proper state flow
-
-### 🔧 Recent Improvements
-- Added missing API endpoints (`/modules`, `/diagnostics`, `/refactors`, `/metrics`, `/previews`)
-- Implemented JFileChooser for desktop file selection
-- Fixed repository loading timeout issues
-- Enhanced error handling and logging
-- Improved project structure analysis (29 Kotlin files, 2 modules detected)
-
-### 📊 Analysis Results
-When analyzing this DebugForge project itself:
-- **Modules**: 2 (backend, composeApp)
-- **Kotlin Files**: 29
-- **Diagnostics**: 1 (WASM threading issue)
-- **Suggestions**: 4 (force unwrap replacements, large class splitting, etc.)
-- **Shared Code**: 82.85%
-
 ## Architecture
 
 ### Project Structure
