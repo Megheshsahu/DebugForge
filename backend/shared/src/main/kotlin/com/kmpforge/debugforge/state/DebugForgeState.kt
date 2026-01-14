@@ -8,7 +8,7 @@ import com.kmpforge.debugforge.preview.PreviewState
 import com.kmpforge.debugforge.ai.RefactorSuggestion
 
 /**
- * Root state object exposed to the Compose Multiplatform frontend.
+ * Root state object exposed to the Compose frontend.
  * This is the single source of truth for all UI state.
  * 
  * The frontend subscribes to StateFlow<DebugForgeState> and recomposes

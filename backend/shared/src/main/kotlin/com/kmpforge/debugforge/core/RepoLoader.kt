@@ -188,7 +188,7 @@ data class RepositoryDelta(
  */
 data class ValidationResult(
     val isValid: Boolean,
-    val isKmpProject: Boolean,
+    val isKotlinProject: Boolean,
     val hasGradle: Boolean,
     val hasKotlin: Boolean,
     val issues: List<String>,

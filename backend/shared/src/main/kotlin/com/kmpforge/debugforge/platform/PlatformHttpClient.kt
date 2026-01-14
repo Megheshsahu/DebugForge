@@ -14,9 +14,9 @@ class PlatformHttpClient() {
     private val client = HttpClient(CIO) {
         expectSuccess = false
         engine {
-            requestTimeout = 30000
+            requestTimeout = 120000 // 2 minutes for Git operations
             endpoint {
-                connectTimeout = 10000
+                connectTimeout = 30000 // 30 seconds
                 keepAliveTime = 5000
             }
         }

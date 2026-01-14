@@ -80,6 +80,7 @@ kotlin {
                 implementation("androidx.documentfile:documentfile:1.0.1")
                 implementation("androidx.security:security-crypto:1.1.0-alpha06")
                 implementation(compose.uiTooling)
+                implementation("androidx.compose.material3:material3:1.1.2")
             }
         }
         

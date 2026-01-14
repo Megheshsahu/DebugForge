@@ -646,5 +646,5 @@ data class AIAnalyzeRequest(
     val code: String = "",
     val filePath: String = "",
     val fileName: String = "unknown.kt",
-    val context: String = "Kotlin Multiplatform project"
+    val context: String = "Kotlin project"
 )

@@ -189,7 +189,7 @@ class DebugForgeApiClient {
             
             // Poll for completion (load is async on server)
             var attempts = 0
-            val maxAttempts = 60 // 1 minute timeout
+            val maxAttempts = 300 // 5 minutes timeout for analysis
             
             while (attempts < maxAttempts) {
                 delay(1000)
@@ -216,7 +216,7 @@ class DebugForgeApiClient {
                 }
             }
             
-            LoadResult.Failed("Load timed out after 1 minute")
+            LoadResult.Failed("Load timed out after 5 minutes")
         } catch (e: Exception) {
             println("Error loading repo: ${e.message}")
             LoadResult.Failed(e.message ?: "Unknown error")
@@ -286,6 +286,77 @@ class DebugForgeApiClient {
         return input.startsWith("https://github.com/") || 
                input.startsWith("git@github.com:") ||
                input.startsWith("http://github.com/")
+    }
+    
+    data class UrlValidationResult(
+        val isValid: Boolean,
+        val error: String? = null,
+        val subdirectory: String? = null
+    )
+    
+    fun validateGitUrl(url: String): UrlValidationResult {
+        val trimmed = url.trim()
+        
+        // Check for basic GitHub URL patterns
+        if (!isGitHubUrl(trimmed)) {
+            return UrlValidationResult(false, "URL must be a GitHub repository URL (https://github.com/user/repo or git@github.com:user/repo)")
+        }
+        
+        // Extract owner/repo for GitHub URLs
+        val repoPath = when {
+            trimmed.startsWith("https://github.com/") -> {
+                trimmed.removePrefix("https://github.com/").removeSuffix(".git")
+            }
+            trimmed.startsWith("git@github.com:") -> {
+                trimmed.removePrefix("git@github.com:").removeSuffix(".git")
+            }
+            else -> return UrlValidationResult(false, "Unsupported GitHub URL format")
+        }
+        
+        // Extract only the owner/repo part, ignoring additional path components
+        val pathParts = repoPath.split("/")
+        val ownerRepoPart = pathParts.take(2).joinToString("/")
+        val subdirectory = if (pathParts.size > 4 && pathParts[2] == "tree") {
+            // GitHub URL format: owner/repo/tree/branch/path...
+            // Skip "tree" and "branch" parts
+            pathParts.drop(4).joinToString("/")
+        } else if (pathParts.size > 2) {
+            // Other URL formats with additional path
+            pathParts.drop(2).joinToString("/")
+        } else null
+        
+        // Validate subdirectory doesn't contain invalid path characters
+        val validatedSubdirectory = subdirectory?.let {
+            if (it.contains(":") || it.contains("..") || it.startsWith("/")) {
+                null // Invalid subdirectory path
+            } else {
+                it
+            }
+        }
+        
+        // Validate owner/repo format
+        if (!ownerRepoPart.contains("/")) {
+            return UrlValidationResult(false, "GitHub URL must include both owner and repository name (owner/repo)")
+        }
+        
+        val parts = ownerRepoPart.split("/")
+        if (parts.size != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+            return UrlValidationResult(false, "Invalid GitHub repository format. Expected: owner/repository")
+        }
+        
+        // Check for valid characters (basic validation)
+        val owner = parts[0]
+        val repo = parts[1]
+        
+        if (!owner.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$"))) {
+            return UrlValidationResult(false, "Invalid GitHub owner name: '$owner'. Owner names can only contain alphanumeric characters and hyphens.")
+        }
+        
+        if (!repo.matches(Regex("^[a-zA-Z0-9._-]+$"))) {
+            return UrlValidationResult(false, "Invalid GitHub repository name: '$repo'. Repository names can contain alphanumeric characters, dots, underscores, and hyphens.")
+        }
+        
+        return UrlValidationResult(true, subdirectory = validatedSubdirectory) // Valid
     }
     
     suspend fun runAnalysis(repoId: String): Boolean {

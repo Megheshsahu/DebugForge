@@ -17,10 +17,13 @@ class JvmGitOperations : GitOperations {
         localPath: String,
         branch: String?,
         onProgress: (Float) -> Unit
-    ): Boolean {
+    ): Result<Unit> {
         return try {
+            // Validate and normalize the URL
+            val normalizedUrl = normalizeGitUrl(url)
+            
             val cloneCommand = Git.cloneRepository()
-                .setURI(url)
+                .setURI(normalizedUrl)
                 .setDirectory(File(localPath))
 
             if (branch != null) {
@@ -28,9 +31,10 @@ class JvmGitOperations : GitOperations {
             }
 
             cloneCommand.call()
-            true
+            Result.success(Unit)
         } catch (e: Exception) {
-            false
+            val enhancedError = enhanceGitError(e, url)
+            Result.failure(enhancedError)
         }
     }
 
@@ -41,10 +45,13 @@ class JvmGitOperations : GitOperations {
         password: String,
         branch: String?,
         onProgress: (Float) -> Unit
-    ): Boolean {
+    ): Result<Unit> {
         return try {
+            // Validate and normalize the URL
+            val normalizedUrl = normalizeGitUrl(url)
+            
             val cloneCommand = Git.cloneRepository()
-                .setURI(url)
+                .setURI(normalizedUrl)
                 .setDirectory(File(localPath))
                 .setCredentialsProvider(UsernamePasswordCredentialsProvider(username, password))
 
@@ -53,9 +60,10 @@ class JvmGitOperations : GitOperations {
             }
 
             cloneCommand.call()
-            true
+            Result.success(Unit)
         } catch (e: Exception) {
-            false
+            val enhancedError = enhanceGitError(e, url)
+            Result.failure(enhancedError)
         }
     }
 
@@ -258,6 +266,138 @@ class JvmGitOperations : GitOperations {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    private fun normalizeGitUrl(url: String): String {
+        val trimmed = url.trim()
+        
+        // Handle GitHub URLs - extract owner/repo first
+        if (trimmed.contains("github.com")) {
+            val repoPath = when {
+                trimmed.startsWith("https://github.com/") -> {
+                    trimmed.removePrefix("https://github.com/").removeSuffix(".git")
+                }
+                trimmed.startsWith("git@github.com:") -> {
+                    trimmed.removePrefix("git@github.com:").removeSuffix(".git")
+                }
+                else -> return trimmed
+            }
+            
+            // Extract only the owner/repo part, ignoring additional path components
+            val ownerRepoPart = repoPath.split("/").take(2).joinToString("/")
+            
+            // Reconstruct the clean Git URL
+            val cleanUrl = when {
+                trimmed.startsWith("https://github.com/") -> "https://github.com/$ownerRepoPart"
+                trimmed.startsWith("git@github.com:") -> "git@github.com:$ownerRepoPart"
+                else -> trimmed
+            }
+            
+            // Add .git if not present
+            return if (cleanUrl.endsWith(".git")) cleanUrl else "$cleanUrl.git"
+        }
+        
+        // For other Git URLs, ensure they have .git extension if it's a GitHub-like URL
+        if (trimmed.startsWith("https://") && trimmed.contains(".com/") && !trimmed.endsWith(".git")) {
+            return "$trimmed.git"
+        }
+        
+        return trimmed
+    }
+    
+    private fun enhanceGitError(originalError: Exception, url: String): Exception {
+        val message = originalError.message ?: "Unknown error"
+        
+        return when {
+            message.contains("Invalid remote") || message.contains("Invalid remote: origin") -> {
+                Exception("""
+                    Invalid Git repository URL: ${originalError.message}
+                    
+                    This usually means:
+                    • Repository URL is malformed or incorrect
+                    • Repository doesn't exist
+                    • Repository is private and requires authentication
+                    • URL format is not supported
+                    
+                    Supported URL formats:
+                    • https://github.com/user/repo (will be converted to https://github.com/user/repo.git)
+                    • https://github.com/user/repo.git
+                    • git@github.com:user/repo.git
+                    
+                    Please check:
+                    1. Repository exists and is spelled correctly
+                    2. You have permission to access it (public repos only for now)
+                    3. URL format is correct
+                    
+                    Original URL: $url
+                """.trimIndent(), originalError)
+            }
+            message.contains("Authentication failed") || message.contains("403") || message.contains("not authorized") -> {
+                Exception("""
+                    Authentication required: ${originalError.message}
+                    
+                    This repository appears to be private or requires authentication.
+                    Currently, only public repositories are supported.
+                    
+                    For private repositories, you can:
+                    1. Make the repository public temporarily
+                    2. Clone it locally first, then load the local path
+                    3. Use SSH authentication (future feature)
+                    
+                    Repository URL: $url
+                """.trimIndent(), originalError)
+            }
+            message.contains("Repository not found") || message.contains("404") -> {
+                Exception("""
+                    Repository not found: ${originalError.message}
+                    
+                    Please verify:
+                    • Repository exists on GitHub
+                    • Repository name is spelled correctly
+                    • Repository is not private (or you have access)
+                    
+                    You can check by visiting: ${url.replace(".git", "")}
+                    
+                    Repository URL: $url
+                """.trimIndent(), originalError)
+            }
+            message.contains("getsockopt") || message.contains("Connection refused") -> {
+                Exception("""
+                    Network connection failed: ${originalError.message}
+                    
+                    This usually indicates:
+                    • No internet connection
+                    • Firewall blocking Git connections
+                    • Corporate proxy blocking HTTPS traffic
+                    • GitHub.com is unreachable
+                    
+                    Troubleshooting steps:
+                    1. Check your internet connection
+                    2. Try accessing https://github.com in a browser
+                    3. Check firewall/proxy settings
+                    4. Try using SSH instead of HTTPS: git@github.com:user/repo.git
+                    5. Configure Git proxy if needed: git config --global http.proxy http://proxy.company.com:8080
+                    
+                    Repository URL: $url
+                """.trimIndent(), originalError)
+            }
+            message.contains("timeout") || message.contains("Timeout") -> {
+                Exception("""
+                    Connection timeout: ${originalError.message}
+                    
+                    The connection to the Git server timed out. This could be due to:
+                    • Slow internet connection
+                    • Network congestion
+                    • Server being busy
+                    • Firewall/proxy timeouts
+                    
+                    Try again in a few minutes or check your network settings.
+                    
+                    Repository URL: $url
+                """.trimIndent(), originalError)
+            }
+            else -> originalError
         }
     }
 }

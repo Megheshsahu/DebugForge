@@ -171,16 +171,38 @@ class DebugForgeViewModel {
                 val trimmedInput = input.trim()
                 
                 if (apiClient.isGitHubUrl(trimmedInput)) {
+                    // Validate GitHub URL format before attempting clone
+                    val urlValidation = apiClient.validateGitUrl(trimmedInput)
+                    if (!urlValidation.isValid) {
+                        _uiState.value = UiState.Error("Invalid GitHub URL: ${urlValidation.error}")
+                        return@launch
+                    }
+                    
                     // GitHub URL - clone first
                     _uiState.value = UiState.Loading("Cloning from GitHub...")
                     
-                    val repoName = trimmedInput.substringAfterLast("/").removeSuffix(".git")
+                    // Extract repo name from the owner/repo part only
+                    val repoPath = when {
+                        trimmedInput.startsWith("https://github.com/") -> {
+                            trimmedInput.removePrefix("https://github.com/").removeSuffix(".git")
+                        }
+                        trimmedInput.startsWith("git@github.com:") -> {
+                            trimmedInput.removePrefix("git@github.com:").removeSuffix(".git")
+                        }
+                        else -> trimmedInput
+                    }
+                    val repoName = repoPath.split("/").take(2).joinToString("-")
                     val localPath = getTempDir() + "/debugforge-repos/$repoName"
                     
                     when (val cloneResult = apiClient.cloneRepo(trimmedInput, localPath)) {
                         is DebugForgeApiClient.CloneResult.Success -> {
                             // Clone completed, fetch results
-                            fetchAndShowResults(localPath, "cloned-repo")
+                            val analysisPath = if (urlValidation.subdirectory != null) {
+                                "$localPath/${urlValidation.subdirectory}"
+                            } else {
+                                localPath
+                            }
+                            fetchAndShowResults(analysisPath, "cloned-repo")
                         }
                         is DebugForgeApiClient.CloneResult.Failed -> {
                             // If clone failed because dir exists, try loading it instead
@@ -215,7 +237,7 @@ class DebugForgeViewModel {
                                 }
                                 
                                 if (!loadSuccess) {
-                                    _uiState.value = UiState.Error("Could not find KMP project in cloned repo. Last error: $lastError")
+                                    _uiState.value = UiState.Error("Repository cloned successfully, but analysis failed. This tool is designed for Kotlin Multiplatform projects. Please ensure your repository has:\n• Gradle settings file (settings.gradle.kts or settings.gradle)\n• Kotlin plugin applied in build files\n• At least one Kotlin module\n\nLast error: $lastError")
                                 }
                             } else {
                                 _uiState.value = UiState.Error("GitHub clone failed: ${cloneResult.error}")
@@ -359,6 +381,10 @@ class DebugForgeViewModel {
     
     fun clearSyncStatus() {
         _syncStatus.value = null
+    }
+    
+    fun setSyncStatus(message: String) {
+        _syncStatus.value = message
     }
     
     /**

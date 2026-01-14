@@ -3,8 +3,8 @@ package com.kmpforge.debugforge.core
 import kotlinx.serialization.Serializable
 
 /**
- * Represents a KMP module detected in the repository.
- * A module corresponds to a Gradle subproject with Kotlin Multiplatform configuration.
+ * Represents a Kotlin module detected in the repository.
+ * A module corresponds to a Gradle subproject with Kotlin configuration.
  */
 @Serializable
 data class ModuleInfo(

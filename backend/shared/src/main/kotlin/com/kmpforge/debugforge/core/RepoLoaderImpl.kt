@@ -45,19 +45,48 @@ class RepoLoaderImpl(
             _loadingState.value = LoadingState.InProgress("Parsing source files", 0.4f, null)
             val kotlinFiles = mutableListOf<SourceFile>()
             val resourceFiles = mutableListOf<ResourceFile>()
-            
-            modules.forEach { module ->
-                module.sourceSets.forEach { sourceSet ->
-                    sourceSet.files.forEach { file ->
+
+            if (modules.isNotEmpty()) {
+                modules.forEach { module ->
+                    module.sourceSets.forEach { sourceSet ->
+                        sourceSet.files.forEach { file ->
+                            processedFiles++
+                            _loadingState.value = LoadingState.InProgress(
+                                "Parsing source files",
+                                0.4f + (0.5f * processedFiles / totalFiles),
+                                file.relativePath
+                            )
+                            kotlinFiles.add(file)
+                        }
+                    }
+                }
+            } else {
+                // Fallback: collect all Kotlin files in the project if no modules detected
+                files.filter { it.endsWith(".kt") || it.endsWith(".kts") }
+                    .filter { !it.contains("/build/") && !it.contains("\\build\\") }
+                    .forEach { kotlinFile ->
                         processedFiles++
                         _loadingState.value = LoadingState.InProgress(
                             "Parsing source files",
                             0.4f + (0.5f * processedFiles / totalFiles),
-                            file.relativePath
+                            kotlinFile.removePrefix(path).removePrefix("/").removePrefix("\\")
                         )
-                        kotlinFiles.add(file)
+
+                        val content = fileSystem.readFile(kotlinFile)
+                        kotlinFiles.add(
+                            SourceFile(
+                                absolutePath = kotlinFile,
+                                relativePath = kotlinFile.removePrefix(path).removePrefix("/").removePrefix("\\"),
+                                moduleGradlePath = ":",
+                                sourceSetName = "main",
+                                packageName = extractPackageName(content),
+                                content = content,
+                                hash = fileSystem.computeFileHash(kotlinFile),
+                                lastModified = fileSystem.getLastModified(kotlinFile),
+                                lineCount = content.lines().size
+                            )
+                        )
                     }
-                }
             }
             
             // Collect resource files (files are already absolute paths)
@@ -108,8 +137,14 @@ class RepoLoaderImpl(
         return try {
             _loadingState.value = LoadingState.InProgress("Cloning repository", 0f, url)
             
-            gitOperations.clone(url, targetPath, branch) { progress ->
+            val cloneResult = gitOperations.clone(url, targetPath, branch) { progress ->
                 _loadingState.value = LoadingState.InProgress("Cloning repository", progress, url)
+            }
+            
+            if (cloneResult.isFailure) {
+                val error = cloneResult.exceptionOrNull() ?: Exception("Unknown clone error")
+                _loadingState.value = LoadingState.Error("Clone failed: ${error.message}", error)
+                return Result.failure(error)
             }
             
             loadLocalRepository(targetPath)
@@ -153,75 +188,88 @@ class RepoLoaderImpl(
     override suspend fun validateRepository(path: String): ValidationResult {
         val issues = mutableListOf<String>()
         val suggestions = mutableListOf<String>()
-        
-        val hasGradle = fileSystem.exists(fileSystem.resolvePath(path, "settings.gradle.kts")) ||
-                       fileSystem.exists(fileSystem.resolvePath(path, "settings.gradle"))
-        
-        if (!hasGradle) {
-            issues.add("No Gradle settings file found")
-            suggestions.add("This tool requires a Gradle-based KMP project")
+
+        // Look for any Gradle files in the project (more flexible)
+        val allFiles = fileSystem.walkDirectory(path)
+        val hasAnyGradleFiles = allFiles.any {
+            it.endsWith("build.gradle.kts") || it.endsWith("build.gradle") ||
+            it.endsWith("settings.gradle.kts") || it.endsWith("settings.gradle")
         }
-        
-        val rootBuildFile = fileSystem.resolvePath(path, "build.gradle.kts")
-        val hasKotlin = if (fileSystem.exists(rootBuildFile)) {
-            val content = fileSystem.readFile(rootBuildFile)
-            content.contains("kotlin") || content.contains("KotlinMultiplatform")
-        } else false
-        
-        if (!hasKotlin) {
-            issues.add("Kotlin plugin not detected in root build file")
+
+        if (!hasAnyGradleFiles) {
+            issues.add("No Gradle build files found")
+            suggestions.add("This tool works best with Gradle-based projects. Ensure you have build.gradle.kts or build.gradle files.")
         }
-        
-        // Check for KMP indicators
-        val isKmpProject = fileSystem.walkDirectory(path).any { file ->
+
+        // Check for Kotlin plugins in any build file (more flexible)
+        val hasKotlinPlugin = allFiles.any { file ->
             if (file.endsWith("build.gradle.kts") || file.endsWith("build.gradle")) {
-                val content = fileSystem.readFile(file)  // file is already absolute path
-                content.contains("kotlin(\"multiplatform\")") ||
-                content.contains("id(\"org.jetbrains.kotlin.multiplatform\")") ||
-                content.contains("KotlinMultiplatform")
+                val content = fileSystem.readFile(file)
+                isKotlinModule(content)
             } else false
         }
-        
-        if (!isKmpProject) {
-            issues.add("No Kotlin Multiplatform modules detected")
-            suggestions.add("Ensure at least one module applies the Kotlin Multiplatform plugin")
+
+        if (!hasKotlinPlugin) {
+            issues.add("No Kotlin plugins detected in build files")
+            suggestions.add("This tool specializes in Kotlin projects. Ensure at least one build file applies a Kotlin plugin (kotlin-jvm, kotlin-multiplatform, etc.)")
         }
-        
+
+        // Check for Kotlin source files as a fallback
+        val hasKotlinFiles = allFiles.any { it.endsWith(".kt") || it.endsWith(".kts") }
+
+        if (!hasKotlinFiles && !hasKotlinPlugin) {
+            issues.add("No Kotlin source files found")
+            suggestions.add("Ensure your project contains Kotlin source files (.kt or .kts)")
+        }
+
+        // More lenient validation - allow projects that have some Kotlin indicators
+        val isValid = hasAnyGradleFiles && (hasKotlinPlugin || hasKotlinFiles)
+
         return ValidationResult(
-            isValid = issues.isEmpty(),
-            isKmpProject = isKmpProject,
-            hasGradle = hasGradle,
-            hasKotlin = hasKotlin,
+            isValid = isValid,
+            isKotlinProject = hasKotlinPlugin || hasKotlinFiles,
+            hasGradle = hasAnyGradleFiles,
+            hasKotlin = hasKotlinPlugin,
             issues = issues,
             suggestions = suggestions
         )
     }
     
     private suspend fun detectModules(rootPath: String, files: List<String>): List<DetectedModule> {
-        val buildFiles = files.filter { 
-            it.endsWith("build.gradle.kts") || it.endsWith("build.gradle") 
+        val buildFiles = files.filter { file ->
+            file.endsWith("build.gradle.kts") || file.endsWith("build.gradle")
         }
-        
-        return buildFiles.mapNotNull { buildFile ->
+
+        val modules = buildFiles.mapNotNull { buildFile ->
             val absoluteModulePath = fileSystem.getParent(buildFile) ?: ""
             // Convert absolute path to relative path from rootPath
-            val normalizedRoot = rootPath.replace("\\", "/").trimEnd('/')
+            val normalizedRoot = rootPath.replace("\\", "/").replace("//", "/").trimEnd('/')
             val normalizedModule = absoluteModulePath.replace("\\", "/").trimEnd('/')
             val relativeModulePath = if (normalizedModule.startsWith(normalizedRoot)) {
                 normalizedModule.removePrefix(normalizedRoot).trimStart('/')
             } else {
-                normalizedModule
+                // If the module path doesn't start with root path, it might be the root itself
+                if (normalizedModule == normalizedRoot) "" else normalizedModule
             }
-            
+
             // buildFile is already an absolute path from walkDirectory
             val buildContent = fileSystem.readFile(buildFile)
-            
-            // Only include KMP modules
-            if (!isKmpModule(buildContent)) return@mapNotNull null
-            
+
+            // Include modules that have Kotlin plugins OR Kotlin source files
+            val hasKotlinPlugin = isKotlinModule(buildContent)
+            val hasKotlinFiles = files.any { file ->
+                file.startsWith(absoluteModulePath) && (file.endsWith(".kt") || file.endsWith(".kts"))
+            }
+
+            if (!hasKotlinPlugin && !hasKotlinFiles) return@mapNotNull null
+
             val gradlePath = computeGradlePath(relativeModulePath)
-            val sourceSets = detectSourceSets(rootPath, relativeModulePath, gradlePath)
-            
+            val sourceSets = try {
+                detectSourceSets(rootPath, relativeModulePath, gradlePath)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
             DetectedModule(
                 path = absoluteModulePath,
                 gradlePath = gradlePath,
@@ -231,49 +279,123 @@ class RepoLoaderImpl(
                 sourceSets = sourceSets
             )
         }
+
+        println("DEBUG: detectModules - returning ${modules.size} modules")
+
+        // If no modules found but we have Kotlin files, create a root module
+        if (modules.isEmpty()) {
+            val hasKotlinFiles = files.any { it.endsWith(".kt") || it.endsWith(".kts") }
+            if (hasKotlinFiles) {
+                // Try to find a root build file
+                val rootBuildFile = files.find { file ->
+                    val parent = fileSystem.getParent(file) ?: ""
+                    parent == rootPath && (file.endsWith("build.gradle.kts") || file.endsWith("build.gradle"))
+                }
+
+                if (rootBuildFile != null) {
+                    val gradlePath = ":"
+                    val sourceSets = detectSourceSets(rootPath, "", gradlePath)
+
+                    return listOf(DetectedModule(
+                        path = rootPath,
+                        gradlePath = gradlePath,
+                        name = "root",
+                        buildFilePath = rootBuildFile,
+                        buildFileType = if (rootBuildFile.endsWith(".kts")) BuildSystem.GRADLE_KTS else BuildSystem.GRADLE_GROOVY,
+                        sourceSets = sourceSets
+                    ))
+                }
+            }
+        }
+
+        return modules
     }
     
-    private fun isKmpModule(buildContent: String): Boolean {
-        return buildContent.contains("kotlin(\"multiplatform\")") ||
-               buildContent.contains("id(\"org.jetbrains.kotlin.multiplatform\")") ||
-               buildContent.contains("plugins {") && buildContent.contains("multiplatform")
+    private fun isKotlinModule(buildContent: String): Boolean {
+        return buildContent.contains("kotlin(") ||
+               buildContent.contains("id(\"org.jetbrains.kotlin.") ||
+               buildContent.contains("kotlin-multiplatform") ||
+               buildContent.contains("kotlin-jvm") ||
+               buildContent.contains("kotlin-js") ||
+               buildContent.contains("kotlin-android") ||
+               (buildContent.contains("plugins") && buildContent.contains("kotlin"))
     }
     
     private suspend fun detectSourceSets(
-        rootPath: String, 
+        rootPath: String,
         modulePath: String,
         gradlePath: String
     ): List<DetectedSourceSet> {
         val sourceSets = mutableListOf<DetectedSourceSet>()
-        val srcPath = if (modulePath.isEmpty()) "src" else "$modulePath/src"
-        val fullSrcPath = fileSystem.resolvePath(rootPath, srcPath)
-        
-        if (!fileSystem.exists(fullSrcPath)) return emptyList()
-        
-        val sourceSetDirs = fileSystem.listDirectory(fullSrcPath)
-        
-        sourceSetDirs.forEach { sourceSetName ->
-            val platform = detectPlatformFromSourceSetName(sourceSetName)
-            val kotlinPath = "$srcPath/$sourceSetName/kotlin"
-            val javaPath = "$srcPath/$sourceSetName/java"
-            val resourcePath = "$srcPath/$sourceSetName/resources"
-            
-            val kotlinFiles = if (fileSystem.exists(fileSystem.resolvePath(rootPath, kotlinPath))) {
-                collectKotlinFiles(rootPath, kotlinPath, gradlePath, sourceSetName)
-            } else emptyList()
-            
-            sourceSets.add(
-                DetectedSourceSet(
-                    name = sourceSetName,
-                    platform = platform,
-                    kotlinPath = if (fileSystem.exists(fileSystem.resolvePath(rootPath, kotlinPath))) kotlinPath else null,
-                    javaPath = if (fileSystem.exists(fileSystem.resolvePath(rootPath, javaPath))) javaPath else null,
-                    resourcePath = if (fileSystem.exists(fileSystem.resolvePath(rootPath, resourcePath))) resourcePath else null,
-                    files = kotlinFiles
-                )
-            )
+
+        // Ensure modulePath is relative to rootPath
+        val normalizedRoot = rootPath.replace("\\", "/").trimEnd('/')
+        val normalizedModule = modulePath.replace("\\", "/").trimEnd('/')
+        val relativeModulePath = if (normalizedModule.startsWith(normalizedRoot)) {
+            normalizedModule.removePrefix(normalizedRoot).trimStart('/')
+        } else if (normalizedModule.contains(":/") || normalizedModule.startsWith("/")) {
+            // Absolute path - this shouldn't happen, but handle it
+            return emptyList()
+        } else {
+            normalizedModule
         }
-        
+
+        val moduleFullPath = if (modulePath.isEmpty()) rootPath else fileSystem.resolvePath(rootPath, modulePath)
+
+        // Try to detect standard KMP source set structure
+        val srcPath = fileSystem.resolvePath(moduleFullPath, "src")
+        if (fileSystem.exists(srcPath) && fileSystem.isDirectory(srcPath)) {
+            val srcContents = fileSystem.listDirectory(srcPath)
+            val sourceSetDirs = srcContents.filter { fileSystem.isDirectory(fileSystem.resolvePath(srcPath, it)) }
+
+            for (sourceSetDir in sourceSetDirs) {
+                val kotlinPath = fileSystem.resolvePath(fileSystem.resolvePath(srcPath, sourceSetDir), "kotlin")
+                if (fileSystem.exists(kotlinPath) && fileSystem.isDirectory(kotlinPath)) {
+                    // kotlinPath should be relative to rootPath
+                    val kotlinPathRelative = if (relativeModulePath.isEmpty()) {
+                        "src/$sourceSetDir/kotlin"
+                    } else {
+                        "$relativeModulePath/src/$sourceSetDir/kotlin"
+                    }
+                    val kotlinFiles = collectKotlinFiles(rootPath, kotlinPathRelative, gradlePath, sourceSetDir)
+                    if (kotlinFiles.isNotEmpty()) {
+                        sourceSets.add(
+                            DetectedSourceSet(
+                                name = sourceSetDir,
+                                platform = detectPlatformFromSourceSetName(sourceSetDir),
+                                kotlinPath = kotlinPathRelative,
+                                javaPath = null,
+                                resourcePath = null,
+                                files = kotlinFiles
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // If no source sets found with standard detection, use fallback
+        if (sourceSets.isEmpty()) {
+            val allKotlinFiles = try {
+                collectKotlinFilesAnywhere(moduleFullPath, gradlePath)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            if (allKotlinFiles.isNotEmpty()) {
+                sourceSets.add(
+                    DetectedSourceSet(
+                        name = "main",
+                        platform = SourceSetPlatform.COMMON,
+                        kotlinPath = null,
+                        javaPath = null,
+                        resourcePath = null,
+                        files = allKotlinFiles
+                    )
+                )
+            }
+        }
+
         return sourceSets
     }
     
@@ -285,9 +407,11 @@ class RepoLoaderImpl(
     ): List<SourceFile> {
         val fullPath = fileSystem.resolvePath(rootPath, kotlinPath)
         // walkDirectory returns absolute paths
-        return fileSystem.walkDirectory(fullPath)
-            .filter { it.endsWith(".kt") || it.endsWith(".kts") }
-            .map { absolutePath ->
+        val allFiles = fileSystem.walkDirectory(fullPath)
+        System.out.println("DEBUG: collectKotlinFiles - allFiles count: ${allFiles.size}")
+        val kotlinFiles = allFiles.filter { it.endsWith(".kt") || it.endsWith(".kts") }
+        System.out.println("DEBUG: collectKotlinFiles - kotlinFiles count: ${kotlinFiles.size}, files: ${kotlinFiles.take(3).joinToString()}")
+        return kotlinFiles.map { absolutePath ->
                 // Compute relative path from the absolute path
                 val normalizedFull = fullPath.replace("\\", "/").trimEnd('/')
                 val normalizedAbs = absolutePath.replace("\\", "/")
@@ -303,6 +427,38 @@ class RepoLoaderImpl(
                     relativePath = "$kotlinPath/$fileRelativePath",
                     moduleGradlePath = gradlePath,
                     sourceSetName = sourceSetName,
+                    packageName = extractPackageName(content),
+                    content = content,
+                    hash = fileSystem.computeFileHash(absolutePath),
+                    lastModified = fileSystem.getLastModified(absolutePath),
+                    lineCount = content.lines().size
+                )
+            }
+    }
+    
+    private suspend fun collectKotlinFilesAnywhere(
+        moduleFullPath: String,
+        gradlePath: String
+    ): List<SourceFile> {
+        // walkDirectory returns absolute paths
+        val allFiles = fileSystem.walkDirectory(moduleFullPath)
+        val kotlinFiles = allFiles.filter { it.endsWith(".kt") || it.endsWith(".kts") }
+        return kotlinFiles.map { absolutePath ->
+                // Compute relative path from module root
+                val normalizedModule = moduleFullPath.replace("\\", "/").trimEnd('/')
+                val normalizedAbs = absolutePath.replace("\\", "/")
+                val fileRelativePath = if (normalizedAbs.startsWith(normalizedModule)) {
+                    normalizedAbs.removePrefix(normalizedModule).trimStart('/')
+                } else {
+                    fileSystem.getFileName(absolutePath)
+                }
+                
+                val content = fileSystem.readFile(absolutePath)
+                SourceFile(
+                    absolutePath = absolutePath,
+                    relativePath = fileRelativePath,
+                    moduleGradlePath = gradlePath,
+                    sourceSetName = "main",
                     packageName = extractPackageName(content),
                     content = content,
                     hash = fileSystem.computeFileHash(absolutePath),
@@ -335,7 +491,9 @@ class RepoLoaderImpl(
     
     private fun computeGradlePath(modulePath: String): String {
         if (modulePath.isEmpty()) return ":"
-        return ":" + modulePath.replace("/", ":").replace("\\", ":")
+        // Convert path separators to colons and ensure it starts with :
+        val normalizedPath = modulePath.replace("\\", "/").trim('/')
+        return ":" + normalizedPath.replace("/", ":")
     }
     
     private suspend fun parseRootBuildConfig(rootPath: String): RootBuildConfig {

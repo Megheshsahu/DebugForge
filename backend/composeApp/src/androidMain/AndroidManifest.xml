@@ -5,8 +5,7 @@
     
     <application
         android:label="DebugForge"
-        android:icon="@mipmap/ic_launcher"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        android:icon="@mipmap/ic_launcher">
         <activity android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

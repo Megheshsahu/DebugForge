@@ -146,7 +146,7 @@ interface GitOperations {
         localPath: String,
         branch: String?,
         onProgress: (Float) -> Unit
-    ): Boolean
+    ): Result<Unit>
 
     /**
      * Clones a Git repository with credentials.
@@ -158,7 +158,7 @@ interface GitOperations {
         password: String,
         branch: String?,
         onProgress: (Float) -> Unit
-    ): Boolean
+    ): Result<Unit>
 
     /**
      * Checks if a path is inside a Git repository.

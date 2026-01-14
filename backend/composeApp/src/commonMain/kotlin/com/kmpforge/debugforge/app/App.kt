@@ -1,6 +1,7 @@
 package com.kmpforge.debugforge.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -106,7 +108,7 @@ fun RepoInputScreen(viewModel: DebugForgeViewModel) {
         )
         
         Text(
-            "AI-Powered Kotlin Multiplatform Debugger",
+            "AI-Powered Kotlin Debugger",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
@@ -263,24 +265,51 @@ fun WorkspaceScreen(state: UiState.Ready, viewModel: DebugForgeViewModel) {
         // Top bar with Change Project button
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = {
-                    isPicking = true
-                    scope.launch {
-                        val selected = fileSystem.pickProjectFolder()
-                        if (selected != null) {
-                            viewModel.loadRepo(selected)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        isPicking = true
+                        scope.launch {
+                            val selected = fileSystem.pickProjectFolder()
+                            if (selected != null) {
+                                viewModel.loadRepo(selected)
+                            }
+                            isPicking = false
                         }
-                        isPicking = false
-                    }
-                },
-                enabled = !isPicking,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    },
+                    enabled = !isPicking,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Change Project", modifier = Modifier.padding(4.dp))
+                }
+                
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val exportPath = fileSystem.pickProjectFolder()?.let { "$it/suggestions.txt" }
+                            if (exportPath != null) {
+                                val text = state.suggestions.joinToString("\n\n") { 
+                                    "${it.title}\n${it.rationale}" 
+                                }
+                                fileSystem.writeFile(exportPath, text)
+                                viewModel.setSyncStatus("✅ Suggestions exported to $exportPath")
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Export", modifier = Modifier.padding(4.dp))
+                }
+            }
+            
+            Button(
+                onClick = { viewModel.reset() },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
-                Text("Change Project", modifier = Modifier.padding(4.dp))
+                Text("Close App", modifier = Modifier.padding(4.dp))
             }
         }
         // GitHub Sync Status Banner
@@ -339,84 +368,221 @@ fun WorkspaceScreen(state: UiState.Ready, viewModel: DebugForgeViewModel) {
             }
         }
         
-        // Center - Diagnostics
+        // Center - Analysis Results with Tabs
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
                 .padding(16.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            var selectedTab by remember { mutableStateOf(0) }
+            val tabs = listOf("Static Checks", "AI Recommendations")
+            
+            // Tab row
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
             ) {
-                Text(
-                    "Diagnostics (${state.diagnostics.size})",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                
-                // Metrics badge
-                Surface(
-                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        "${state.sharedCodePercent.toInt()}% shared code",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.secondary
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = { 
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(title)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                val count = if (index == 0) state.diagnostics.size else state.suggestions.size
+                                if (count > 0) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            count.toString(),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     )
                 }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            if (state.diagnostics.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("✅", fontSize = 48.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "No issues found!",
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
+            when (selectedTab) {
+                0 -> {
+                    // Static Checks (Diagnostics)
+                    if (state.diagnostics.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("✅", fontSize = 48.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "No static analysis issues found!",
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(state.diagnostics) { diagnostic ->
+                                DiagnosticCard(diagnostic)
+                            }
+                        }
                     }
                 }
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(state.diagnostics) { diagnostic ->
-                        DiagnosticCard(diagnostic)
+                1 -> {
+                    // AI Recommendations (Suggestions)
+                    var searchQuery by remember { mutableStateOf("") }
+                    
+                    // Search bar
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search recommendations...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        leadingIcon = { Text("🔍", fontSize = 16.sp) }
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    val filteredSuggestions = state.suggestions.filter {
+                        searchQuery.isBlank() || 
+                        it.title.contains(searchQuery, ignoreCase = true) || 
+                        it.rationale.contains(searchQuery, ignoreCase = true)
+                    }
+                    
+                    if (filteredSuggestions.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("🤖", fontSize = 48.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    if (searchQuery.isBlank()) "No AI recommendations available" else "No recommendations match your search",
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(filteredSuggestions) { suggestion ->
+                                SuggestionCard(suggestion, viewModel, githubEnabled, state.repoPath)
+                            }
+                        }
                     }
                 }
             }
         }
         
-        // Right panel - Suggestions
+        // Right panel - Actions & Export
         Surface(
             modifier = Modifier
-                .width(320.dp)
+                .width(280.dp)
                 .fillMaxHeight(),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    "AI Suggestions",
+                    "Actions",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Export button
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val exportPath = fileSystem.pickProjectFolder()?.let { "$it/analysis_report.txt" }
+                            if (exportPath != null) {
+                                val report = buildString {
+                                    appendLine("=== DEBUGFORGE ANALYSIS REPORT ===")
+                                    appendLine("Project: ${state.repoPath}")
+                                    appendLine("Generated: ${java.time.LocalDateTime.now()}")
+                                    appendLine()
+                                    
+                                    appendLine("=== STATIC CHECKS (${state.diagnostics.size}) ===")
+                                    state.diagnostics.forEach { diag ->
+                                        appendLine("• ${diag.severity.uppercase()}: ${diag.message}")
+                                        appendLine("  File: ${diag.filePath}:${diag.line}")
+                                        appendLine()
+                                    }
+                                    
+                                    appendLine("=== AI RECOMMENDATIONS (${state.suggestions.size}) ===")
+                                    state.suggestions.forEach { sugg ->
+                                        appendLine("• ${sugg.title}")
+                                        appendLine("  ${sugg.rationale}")
+                                        appendLine()
+                                    }
+                                    
+                                    appendLine("=== METRICS ===")
+                                    appendLine("Shared Code: ${state.sharedCodePercent.toInt()}%")
+                                    appendLine("Modules: ${state.modules.size}")
+                                }
+                                fileSystem.writeFile(exportPath, report)
+                                viewModel.setSyncStatus("✅ Analysis report exported to $exportPath")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("📄 Export Report", modifier = Modifier.padding(4.dp))
+                }
+                
                 Spacer(modifier = Modifier.height(12.dp))
                 
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.suggestions) { suggestion ->
-                        SuggestionCard(suggestion, viewModel, githubEnabled, state.repoPath)
+                // Metrics display
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            "Project Metrics",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "📊 Shared Code: ${state.sharedCodePercent.toInt()}%",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "📁 Modules: ${state.modules.size}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "🔍 Static Issues: ${state.diagnostics.size}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "🤖 AI Suggestions: ${state.suggestions.size}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }

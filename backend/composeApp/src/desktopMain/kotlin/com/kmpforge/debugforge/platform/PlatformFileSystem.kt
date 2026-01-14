@@ -34,7 +34,7 @@ actual class PlatformFileSystem {
             javax.swing.SwingUtilities.invokeLater {
                 val fileChooser = javax.swing.JFileChooser().apply {
                     fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
-                    dialogTitle = "Select Kotlin Multiplatform Project Directory"
+                    dialogTitle = "Select Kotlin Project Directory"
                     approveButtonText = "Select Project"
                     approveButtonToolTipText = "Select the root directory of your KMP project"
 
