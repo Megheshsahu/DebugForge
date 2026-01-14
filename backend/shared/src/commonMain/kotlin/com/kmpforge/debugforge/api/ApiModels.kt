@@ -10,11 +10,41 @@ data class LoadRepoRequest(val path: String)
 data class CloneRepoRequest(val url: String, val localPath: String)
 
 @Serializable
+data class RepoInfo(
+    val id: String,
+    val path: String,
+    val name: String,
+    val gitInfo: GitInfo? = null,
+    val modules: List<ModuleInfo> = emptyList(),
+    val buildSystem: String = "gradle",
+    val lastAnalyzed: Long? = null
+)
+
+@Serializable
+data class GitInfo(
+    val branch: String,
+    val commitHash: String,
+    val remoteUrl: String? = null,
+    val isDirty: Boolean = false
+)
+
+@Serializable
+data class ModuleInfo(
+    val id: String,
+    val name: String,
+    val path: String,
+    val type: String,
+    val targets: List<String> = emptyList(),
+    val dependencies: List<String> = emptyList()
+)
+
+@Serializable
 data class LoadRepoResponse(
     val success: Boolean,
     val message: String,
     val repoId: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val repo: RepoInfo? = null
 )
 
 @Serializable
@@ -22,7 +52,8 @@ data class CloneRepoResponse(
     val success: Boolean,
     val message: String,
     val repoId: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val repo: RepoInfo? = null
 )
 
 // AI Analysis

@@ -68,7 +68,6 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation("io.ktor:ktor-client-cio:2.3.7")
-                implementation(project(":server"))
                 implementation(project(":shared"))
             }
         }

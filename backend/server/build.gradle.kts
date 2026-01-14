@@ -7,12 +7,16 @@ plugins {
 group = "com.kmpforge.debugforge"
 version = "1.0.0"
 
+kotlin {
+    jvmToolchain(17)
+}
+
 application {
-    mainClass.set("com.kmpforge.debugforge.server.ApplicationKt")
+    mainClass.set("com.kmpforge.debugforge.server.TestServerKt")
 }
 
 dependencies {
-    implementation(project(":shared"))
+    implementation(project(":shared", configuration = "jvmRuntimeElements"))
     
     // Ktor Server
     val ktorVersion = "2.3.7"

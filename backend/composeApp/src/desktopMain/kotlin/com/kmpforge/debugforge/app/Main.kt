@@ -6,8 +6,6 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.unit.dp
-import com.kmpforge.debugforge.server.DebugForgeEmbeddedServer
-import kotlinx.coroutines.*
 
 fun main() = try {
     println("DebugForge desktop app starting...")

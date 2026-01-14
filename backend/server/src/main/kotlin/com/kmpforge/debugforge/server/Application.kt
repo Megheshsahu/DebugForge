@@ -1,9 +1,6 @@
 package com.kmpforge.debugforge.server
 
-import com.kmpforge.debugforge.core.*
-import com.kmpforge.debugforge.persistence.*
-import com.kmpforge.debugforge.state.*
-import com.kmpforge.debugforge.sync.*
+import com.kmpforge.debugforge.api.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -36,7 +33,7 @@ import java.net.http.HttpResponse
  * Main entry point for the DebugForge backend server.
  */
 fun main() {
-    val port = System.getenv("PORT")?.toIntOrNull() ?: 8765
+    val port = System.getenv("PORT")?.toIntOrNull() ?: 18999
     val host = System.getenv("HOST") ?: "127.0.0.1"
     
     embeddedServer(Netty, port = port, host = host) {
@@ -48,24 +45,57 @@ fun main() {
  * Configures the Ktor server with all necessary plugins and routes.
  */
 fun Application.configureServer() {
-    // Initialize components
-    val databasePath = DatabaseDriverFactory.getDefaultDatabasePath()
-    val driver = DatabaseDriverFactory.createDriver(databasePath)
-    
-    // Create DAO using in-memory implementation for now
-    // TODO: Replace with SQLDelight-backed implementation when schema is generated
-    val dao = InMemoryRepoIndexDao()
-    
-    val fileSystem = JvmFileSystem()
-    val gitOperations = JvmGitOperations()
-    
-    val controller = DebugForgeControllerFactory.create(
-        dao = dao,
-        fileSystem = fileSystem,
-        gitOperations = gitOperations
-    )
-    
     // Configure plugins
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+        })
+    }
+    
+    install(CORS) {
+        allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.ContentType)
+        allowCredentials = true
+        anyHost()
+    }
+    
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "error" to "Internal server error",
+                "message" to cause.message
+            ))
+        }
+    }
+    
+    // Mock controller for testing
+    val mockController = object {
+        fun loadRepository(path: String) {
+            // Mock implementation
+        }
+        
+        fun cloneRepository(url: String, targetPath: String) {
+            // Mock implementation
+        }
+        
+        val state = object {
+            val repoStatus = object {
+                val value = object {
+                    val repoStatus = object {
+                        val repoName = "mock-repo"
+                        val loadedAt = System.currentTimeMillis()
+                    }
+                    val modules = emptyList<Any>()
+                }
+            }
+        }
+    }
     install(ContentNegotiation) {
         json(Json {
             prettyPrint = true
@@ -185,24 +215,68 @@ fun Application.configureServer() {
             
             // Load repository from local path
             post("/repo/load") {
-                val request = call.receive<LoadRepoRequest>()
-                
-                launch {
-                    controller.loadRepository(request.path)
+                try {
+                    val request = call.receive<LoadRepoRequest>()
+                    
+                    // Mock load
+                    mockController.loadRepository(request.path)
+                    
+                    // Mock response
+                    call.respond(LoadRepoResponse(
+                        success = true,
+                        message = "Repository loaded successfully (mock)",
+                        repoId = request.path.hashCode().toString(),
+                        repo = RepoInfo(
+                            id = request.path.hashCode().toString(),
+                            path = request.path,
+                            name = "mock-repo",
+                            gitInfo = null,
+                            modules = emptyList(),
+                            buildSystem = "gradle",
+                            lastAnalyzed = System.currentTimeMillis()
+                        )
+                    ))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(HttpStatusCode.InternalServerError, LoadRepoResponse(
+                        success = false,
+                        message = "Mock error during repository loading",
+                        error = e.message ?: "Unknown error"
+                    ))
                 }
-                
-                call.respond(HttpStatusCode.Accepted, mapOf("status" to "loading"))
             }
             
             // Clone repository from URL
             post("/repo/clone") {
-                val request = call.receive<CloneRepoRequest>()
-                
-                launch {
-                    controller.cloneRepository(request.url, request.localPath)
+                try {
+                    val request = call.receive<CloneRepoRequest>()
+                    
+                    // Mock clone
+                    mockController.cloneRepository(request.url, request.targetPath ?: request.localPath)
+                    
+                    // Mock response
+                    call.respond(CloneRepoResponse(
+                        success = true,
+                        message = "Repository cloned successfully (mock)",
+                        repoId = (request.targetPath ?: request.localPath).hashCode().toString(),
+                        repo = RepoInfo(
+                            id = (request.targetPath ?: request.localPath).hashCode().toString(),
+                            path = request.targetPath ?: request.localPath,
+                            name = "mock-cloned-repo",
+                            gitInfo = null,
+                            modules = emptyList(),
+                            buildSystem = "gradle",
+                            lastAnalyzed = System.currentTimeMillis()
+                        )
+                    ))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(HttpStatusCode.InternalServerError, CloneRepoResponse(
+                        success = false,
+                        message = "Mock error during repository cloning",
+                        error = e.message ?: "Unknown error"
+                    ))
                 }
-                
-                call.respond(HttpStatusCode.Accepted, mapOf("status" to "cloning"))
             }
             
             // Refresh analysis
@@ -599,7 +673,8 @@ data class LoadRepoRequest(val path: String)
 @Serializable
 data class CloneRepoRequest(
     val url: String,
-    val localPath: String
+    val targetPath: String,
+    val branch: String? = null
 )
 
 @Serializable
@@ -648,3 +723,63 @@ data class AIAnalyzeRequest(
     val fileName: String = "unknown.kt",
     val context: String = "Kotlin project"
 )
+
+/**
+ * Embedded server wrapper for desktop application.
+ * Provides a simple interface to start/stop the server programmatically.
+ */
+class DebugForgeEmbeddedServer(
+    private val groqApiKey: String? = null,
+    private val githubToken: String? = null,
+    private val port: Int = 18999,
+    private val host: String = "127.0.0.1"
+) {
+    private var server: Any? = null
+    private var serverJob: Job? = null
+
+    /**
+     * Starts the embedded server.
+     */
+    fun start() {
+        if (server != null) return // Already started
+
+        server = embeddedServer(Netty, port = port, host = host) {
+            configureServer()
+        }
+
+        // Start server in a separate thread that won't be cancelled when the app closes
+        Thread {
+            try {
+                (server as io.ktor.server.engine.ApplicationEngine).start(wait = true)
+            } catch (e: Exception) {
+                println("Server error: ${e.message}")
+                e.printStackTrace()
+            }
+        }.apply {
+            isDaemon = false // Keep JVM alive
+            start()
+        }
+    }
+
+    /**
+     * Stops the embedded server.
+     */
+    fun stop() {
+        (server as? io.ktor.server.engine.ApplicationEngine)?.stop(1000, 5000) // gracePeriodMillis, timeoutMillis
+        server = null
+    }
+
+    /**
+     * Checks if the server is currently running.
+     */
+    fun isRunning(): Boolean {
+        return server != null
+    }
+
+    /**
+     * Gets the server URL.
+     */
+    fun getUrl(): String {
+        return "http://$host:$port"
+    }
+}

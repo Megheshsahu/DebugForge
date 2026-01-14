@@ -16,10 +16,10 @@ export interface GitHubPRResponse {
 }
 /**
  * API Service Layer for DebugForge
- * Connects frontend to backend at port 8765
+ * Connects frontend to backend at port 18999
  */
 
-const API_BASE = 'http://127.0.0.1:8765';
+const API_BASE = 'http://127.0.0.1:8081';
 
 export interface ApiError {
   code: string;
@@ -352,7 +352,7 @@ class DebugForgeApi {
 
   // WebSocket connection for real-time diagnostics
   connectDiagnosticsStream(onEvent: (event: DiagnosticEvent) => void): WebSocket {
-    const ws = new WebSocket(`ws://127.0.0.1:8765/ws/diagnostics`);
+    const ws = new WebSocket(`ws://127.0.0.1:18999/ws/diagnostics`);
     
     ws.onmessage = (event) => {
       try {
