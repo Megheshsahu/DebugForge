@@ -89,11 +89,12 @@ The project uses Gradle with Kotlin DSL. Ensure you have JDK 17+ installed.
 cd backend
 
 # Build all targets
-./gradlew build
+.\gradlew.bat build
 
 # Or build specific targets
-./gradlew composeApp:assembleDebug  # Android debug APK
-./gradlew composeApp:createDistributable  # Desktop distributable
+.\gradlew.bat :composeApp:assembleDebug  # Android debug APK
+.\gradlew.bat :composeApp:createDistributable  # Desktop distributable
+.\gradlew.bat :server:build  # Build the backend server
 ```
 
 
@@ -138,9 +139,20 @@ This will compile and launch the DebugForge desktop application.
 
 5. Click "Save Configuration" to store the credentials securely.
 
-6. Click "Start Server" to launch the embedded backend server on port 18999.
+6. Click "Start Server" to launch the embedded backend server on port 8081.
 
-### 4. Android Application Setup
+### 7. Backend Server (Optional)
+
+If you want to run the backend server separately:
+
+```bash
+cd backend
+.\gradlew.bat :server:run
+```
+
+The server will start on `http://localhost:8081`.
+
+### 5. Android Application Setup
 
 #### Prerequisites for Android
 - Android Studio Arctic Fox or later
@@ -178,7 +190,7 @@ This will compile and launch the DebugForge desktop application.
 
 6. Tap "Start Server" to launch the backend.
 
-### 5. Web Application (WASM) Setup
+### 6. Web Application (WASM) Setup
 
 #### Run the Web Application
 
@@ -211,7 +223,7 @@ python -m http.server 8080
 
 Open `http://localhost:8080` in a modern browser.
 
-### 6. Frontend Development (React/TypeScript)
+### 7. Frontend Development (React/TypeScript)
 
 #### Install Dependencies
 
@@ -225,7 +237,7 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`.
+The frontend will be available at `http://localhost:8080`.
 
 #### Build for Production
 
