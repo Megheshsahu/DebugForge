@@ -2,11 +2,27 @@
 
 ![Project Logo](assets/logo.png)
 
-> _Add a screenshot of the app below (replace with your image path)_
->
-> ![App Screenshot](assets/screenshot.png)
-
 DebugForge is a Kotlin Multiplatform application for analyzing and fixing issues in Kotlin Multiplatform projects. It provides AI-powered code analysis, automated refactoring suggestions, and seamless integration with GitHub for collaborative development.
+
+## Screenshots
+
+### Main Interface
+![Main Interface](assets/KMP%20(1).png)
+
+### Repository Analysis
+![Repository Analysis](assets/KMP%20(2).png)
+
+### Code Diagnostics
+![Code Diagnostics](assets/KMP%20(3).png)
+
+### AI Suggestions
+![AI Suggestions](assets/KMP%20(4).png)
+
+### GitHub Integration
+![GitHub Integration](assets/KMP%20(5).png)
+
+### Settings Configuration
+![Settings Configuration](assets/KMP%20(6).png)
 
 ## System Architecture & Data Flow
 
