@@ -31,7 +31,10 @@ DebugForge is a Kotlin Multiplatform application for analyzing and fixing issues
 ### System Requirements
 - **Operating System**: Windows 10/11 (for Desktop), Android 8.0+ (for Android)
 - **Java Development Kit (JDK)**: JDK 17 or later
-- **Android Studio**: For Android development and testing (optional for Desktop-only)
+- **Android SDK**: Required for Android builds
+  - Download Android Studio from https://developer.android.com/studio
+  - Or install command-line tools only
+- **Node.js**: 18+ and npm (for frontend development)
 - **Git**: For cloning repositories
 
 ### API Keys Required
@@ -45,8 +48,37 @@ DebugForge is a Kotlin Multiplatform application for analyzing and fixing issues
 
 ```bash
 git clone https://github.com/your-username/debugforge.git
+cd debugforge
+```
 
-### 2. Build the Project
+### 2. Set up Android SDK
+
+Create `backend/local.properties` file with your Android SDK path:
+
+```bash
+# Windows
+echo "sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk" > backend/local.properties
+
+# macOS
+echo "sdk.dir=/Users/YourName/Library/Android/sdk" > backend/local.properties
+
+# Linux
+echo "sdk.dir=/home/YourName/Android/Sdk" > backend/local.properties
+```
+
+### 3. Configure API Keys (Optional but Recommended)
+
+Update the configuration files with your API keys:
+
+```kotlin
+// backend/composeApp/src/commonMain/kotlin/com/kmpforge/debugforge/config/AIConfig.kt
+var GROQ_API_KEY: String = "your_groq_api_key_here"
+
+// backend/composeApp/src/commonMain/kotlin/com/kmpforge/debugforge/config/GitHubConfig.kt
+var GITHUB_TOKEN: String = "your_github_token_here"
+```
+
+### 4. Build the Project
 
 The project uses Gradle with Kotlin DSL. Ensure you have JDK 17+ installed.
 
@@ -60,18 +92,18 @@ cd backend
 ./gradlew build
 
 # Or build specific targets
-./gradlew :composeApp:assembleDebug  # Android debug APK
-./gradlew :composeApp:createDistributable  # Desktop distributable
+./gradlew composeApp:assembleDebug  # Android debug APK
+./gradlew composeApp:createDistributable  # Desktop distributable
 ```
 
 
-### 3. Desktop Application Setup
+### 5. Desktop Application Setup
 
 #### Build the Desktop Distributable
 
 ```bash
 cd backend
-./gradlew :composeApp:createDistributable
+./gradlew composeApp:createDistributable
 ```
 
 This creates a native Windows executable at:
@@ -79,7 +111,18 @@ This creates a native Windows executable at:
 
 #### Run the Desktop Application
 
-1. Navigate to the build directory:
+For development, run directly from Gradle:
+
+```bash
+cd backend
+./gradlew composeApp:run
+```
+
+This will compile and launch the DebugForge desktop application.
+
+**Alternative: Run the built executable**
+
+1. After building the distributable (see above), navigate to the build directory:
    ```bash
    cd backend/composeApp/build/compose/binaries/main/app/DebugForge
    ```
@@ -106,25 +149,20 @@ This creates a native Windows executable at:
 
 #### Build and Install APK
 
-1. Open the project in Android Studio:
-   - File > Open > Select the `backend` directory
+1. Ensure Android SDK is properly configured (see step 2 in Installation).
 
-2. Wait for Gradle sync to complete.
-
-3. Build the debug APK:
+2. Build the debug APK:
    ```bash
    cd backend
-   ./gradlew :composeApp:assembleDebug
+   ./gradlew composeApp:assembleDebug
    ```
 
-4. Install on device/emulator:
+3. Install on connected device:
    ```bash
-   ./gradlew :composeApp:installDebug
+   ./gradlew composeApp:installDebug
    ```
 
-5. Or install manually:
-   - Locate APK at: `backend/composeApp/build/outputs/apk/debug/composeApp-debug.apk`
-   - Transfer to device and install
+4. The APK will be available at: `composeApp/build/outputs/apk/debug/composeApp-debug.apk`
 
 #### Run on Android Device
 
@@ -142,11 +180,22 @@ This creates a native Windows executable at:
 
 ### 5. Web Application (WASM) Setup
 
-#### Build for Web
+#### Run the Web Application
+
+For development, run the web application directly:
 
 ```bash
 cd backend
-./gradlew :composeApp:wasmJsBrowserDistribution
+./gradlew composeApp:wasmJsBrowserRun
+```
+
+This will start a development server and open the application in your default browser at `http://localhost:8080`.
+
+#### Build for Production
+
+```bash
+cd backend
+./gradlew composeApp:wasmJsBrowserDistribution
 ```
 
 #### Serve the Web Application
@@ -161,6 +210,28 @@ python -m http.server 8080
 ```
 
 Open `http://localhost:8080` in a modern browser.
+
+### 6. Frontend Development (React/TypeScript)
+
+#### Install Dependencies
+
+```bash
+npm install
+```
+
+#### Start Development Server
+
+```bash
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`.
+
+#### Build for Production
+
+```bash
+npm run build
+```
 
 ## Key Features and Usage Guide
 
