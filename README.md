@@ -47,6 +47,22 @@ DebugForge is a Kotlin Multiplatform application for analyzing and fixing issues
 - **GitHub Personal Access Token**: Create at [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
   - Required scopes: `repo`, `workflow`, `read:org`
 
+## Troubleshooting
+
+### Gradle Wrapper Issues (When Downloading ZIP)
+
+If you encounter errors like "Could not find or load main class org.gradle.wrapper.GradleWrapperMain" when running Gradle commands, the `gradle-wrapper.jar` file may be missing or corrupted (common when downloading ZIP files from GitHub).
+
+**Solution:**
+```powershell
+cd backend
+# Download the wrapper JAR manually
+Invoke-WebRequest -Uri 'https://github.com/gradle/gradle/raw/v8.5.0/gradle/wrapper/gradle-wrapper.jar' -OutFile 'gradle/wrapper/gradle-wrapper.jar'
+
+# Test that it works
+./gradlew.bat --version
+```
+
 ## Installation and Setup
 
 ### 1. Clone the Repository
