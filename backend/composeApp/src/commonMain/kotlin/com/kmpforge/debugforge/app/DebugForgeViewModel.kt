@@ -268,6 +268,9 @@ class DebugForgeViewModel {
     private suspend fun fetchAndShowResults(repoPath: String, repoId: String) {
         _uiState.value = UiState.Loading("Fetching analysis results...")
         
+        // Set the project path for analysis
+        apiClient.setProjectPath(repoPath)
+        
         val diagnostics = apiClient.getGlobalDiagnostics()
         val modules = apiClient.getGlobalModules()
         var suggestions = apiClient.getGlobalSuggestions()

@@ -8,6 +8,11 @@ import kotlin.io.path.listDirectoryEntries
 
 // Simplified API client for standalone mode
 class DebugForgeApiClient {
+    private var currentProjectPath: String? = null
+
+    fun setProjectPath(path: String) {
+        currentProjectPath = path
+    }
 
     suspend fun checkHealth(): Boolean {
         // In standalone mode, always return true
@@ -18,6 +23,7 @@ class DebugForgeApiClient {
         return try {
             // Standalone mode - simulate loading a repository
             println("DEBUG: Loading repository from path: $path")
+            setProjectPath(path) // Set the current project path
             delay(1000) // Simulate network delay
 
             // Mock successful loading
@@ -216,12 +222,13 @@ class DebugForgeApiClient {
         val diagnostics = mutableListOf<DiagnosticDisplay>()
 
         try {
+            val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend" // fallback
             // Scan Kotlin files in the project
-            val kotlinFiles = findKotlinFiles("d:\\Projects\\kotlin project\\kmp-forge-main\\backend")
+            val kotlinFiles = findKotlinFiles(projectPath)
 
             for (file in kotlinFiles) {
                 val content = readFileContent(file)
-                val relativePath = file.substringAfter("backend\\").replace("\\", "/")
+                val relativePath = file.substringAfter("$projectPath\\").replace("\\", "/")
 
                 // Analyze for common issues
                 diagnostics.addAll(analyzeFileForIssues(content, relativePath))
@@ -237,18 +244,14 @@ class DebugForgeApiClient {
         val modules = mutableListOf<ModuleDisplay>()
 
         try {
-            // Scan for Gradle modules
-            val moduleDirs = listOf(
-                "d:\\Projects\\kotlin project\\kmp-forge-main\\backend\\composeApp",
-                "d:\\Projects\\kotlin project\\kmp-forge-main\\backend\\shared",
-                "d:\\Projects\\kotlin project\\kmp-forge-main\\backend\\server"
-            )
-
-            for (moduleDir in moduleDirs) {
-                val path = Path(moduleDir)
-                if (path.exists()) {
+            val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend"
+            // Scan for Gradle modules - look for build.gradle.kts files
+            val path = Path(projectPath)
+            if (path.exists()) {
+                val moduleDirs = findModuleDirectories(projectPath)
+                for (moduleDir in moduleDirs) {
                     val kotlinFiles = findKotlinFiles(moduleDir)
-                    val moduleName = path.fileName.toString()
+                    val moduleName = Path(moduleDir).fileName.toString()
 
                     modules.add(ModuleDisplay(
                         name = moduleName,
@@ -269,11 +272,12 @@ class DebugForgeApiClient {
         val suggestions = mutableListOf<SuggestionDisplay>()
 
         try {
-            val kotlinFiles = findKotlinFiles("d:\\Projects\\kotlin project\\kmp-forge-main\\backend")
+            val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend"
+            val kotlinFiles = findKotlinFiles(projectPath)
 
             for (file in kotlinFiles) {
                 val content = readFileContent(file)
-                val relativePath = file.substringAfter("backend\\").replace("\\", "/")
+                val relativePath = file.substringAfter("$projectPath\\").replace("\\", "/")
 
                 // Generate suggestions based on analysis
                 suggestions.addAll(generateFileSuggestions(content, relativePath))
@@ -287,7 +291,8 @@ class DebugForgeApiClient {
 
     private fun calculateMetrics(): MetricsDisplay {
         try {
-            val kotlinFiles = findKotlinFiles("d:\\Projects\\kotlin project\\kmp-forge-main\\backend")
+            val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend"
+            val kotlinFiles = findKotlinFiles(projectPath)
             var totalLines = 0
             var sharedLines = 0
 
@@ -339,6 +344,43 @@ class DebugForgeApiClient {
 
         scanDirectory(rootPath)
         return kotlinFiles
+    }
+
+    private fun findModuleDirectories(rootPath: String): List<String> {
+        val moduleDirs = mutableListOf<String>()
+
+        fun scanForModules(path: String) {
+            try {
+                val dir = Path(path)
+                if (!dir.exists()) return
+
+                // Check if this directory is a module (has build.gradle.kts or build.gradle)
+                val hasBuildFile = dir.listDirectoryEntries().any { entry ->
+                    val name = entry.fileName.toString()
+                    name == "build.gradle.kts" || name == "build.gradle"
+                }
+
+                if (hasBuildFile) {
+                    moduleDirs.add(path)
+                }
+
+                // Recursively scan subdirectories
+                dir.listDirectoryEntries().forEach { entry ->
+                    if (entry.toFile().isDirectory &&
+                        !entry.fileName.toString().startsWith(".") &&
+                        entry.fileName.toString() != "build" &&
+                        entry.fileName.toString() != "gradle" &&
+                        entry.fileName.toString() != ".gradle") {
+                        scanForModules(entry.toString())
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore directories we can't access
+            }
+        }
+
+        scanForModules(rootPath)
+        return moduleDirs
     }
 
     private fun readFileContent(filePath: String): String {
