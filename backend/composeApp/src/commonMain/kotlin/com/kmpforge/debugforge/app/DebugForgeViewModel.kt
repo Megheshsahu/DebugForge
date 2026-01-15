@@ -5,6 +5,7 @@ import com.kmpforge.debugforge.platform.PlatformFileSystem
 import com.kmpforge.debugforge.sync.GitHubService
 import com.kmpforge.debugforge.sync.SyncManager
 import com.kmpforge.debugforge.sync.SyncResult
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
@@ -134,7 +135,7 @@ class DebugForgeViewModel {
             _syncStatus.value = "⏳ Waiting for server to start..."
             kotlinx.coroutines.delay(2000) // Reduced delay since we know server started
             val running = isServerRunningPlatform(this@DebugForgeViewModel)
-            println("DEBUG: Server running check result: $running")
+            DebugForgeLogger.debug("DebugForgeViewModel", "Server running check result: $running")
             if (running) {
                 _syncStatus.value = "✅ Server started successfully on port 18999"
                 _isServerRunning.value = true

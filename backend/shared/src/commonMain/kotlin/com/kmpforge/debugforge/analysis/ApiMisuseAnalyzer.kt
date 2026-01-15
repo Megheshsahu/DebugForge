@@ -2,6 +2,7 @@ package com.kmpforge.debugforge.analysis
 
 import com.kmpforge.debugforge.diagnostics.*
 import com.kmpforge.debugforge.persistence.RepoIndexDao
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.datetime.Clock
 
 /**
@@ -108,7 +109,7 @@ class ApiMisuseAnalyzer(
                 }
             }
         } catch (e: Exception) {
-            println("ApiMisuseAnalyzer error: ${e.message}")
+            DebugForgeLogger.error("ApiMisuseAnalyzer", "Analysis error: ${e.message}", e)
         }
         
         return diagnostics

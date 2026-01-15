@@ -9,6 +9,7 @@ import com.kmpforge.debugforge.core.*
 import com.kmpforge.debugforge.diagnostics.*
 import com.kmpforge.debugforge.persistence.*
 import com.kmpforge.debugforge.preview.*
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.Clock
@@ -122,7 +123,7 @@ class DebugForgeController(
      */
     suspend fun loadRepository(path: String) {
         val now = Clock.System.now().toEpochMilliseconds()
-        println("DEBUG: Starting loadRepository for path: $path")
+        DebugForgeLogger.debug("DebugForgeController", "Starting loadRepository for path: $path")
         _state.update { it.copy(
             repoStatus = RepoStatus.Loading(path = path, filesScanned = 0)
         ) }
@@ -133,7 +134,7 @@ class DebugForgeController(
                 when (loadingState) {
                     is LoadingState.Idle -> {}
                     is LoadingState.InProgress -> {
-                        println("DEBUG: Loading progress: ${loadingState.operation} - ${loadingState.progress}")
+                        DebugForgeLogger.debug("DebugForgeController", "Loading progress: ${loadingState.operation} - ${loadingState.progress}")
                         _state.update { it.copy(
                             repoStatus = RepoStatus.Loading(
                                 path = path,
@@ -142,11 +143,11 @@ class DebugForgeController(
                         ) }
                     }
                     is LoadingState.Completed -> {
-                        println("DEBUG: Loading completed")
+                        DebugForgeLogger.debug("DebugForgeController", "Loading completed")
                         // Will be handled in main flow
                     }
                     is LoadingState.Error -> {
-                        println("DEBUG: Loading error: ${loadingState.message}")
+                        DebugForgeLogger.error("DebugForgeController", "Loading error: ${loadingState.message}")
                         _state.update { it.copy(
                             repoStatus = RepoStatus.Failed(
                                 error = loadingState.message,
@@ -164,22 +165,22 @@ class DebugForgeController(
         }
         
         try {
-            println("DEBUG: Step 1: Loading and parsing repository")
+            DebugForgeLogger.debug("DebugForgeController", "Step 1: Loading and parsing repository")
             // Step 1: Load and parse repository
             val result = repoLoader.loadLocalRepository(path)
             val parsedRepo = result.getOrThrow()
-            println("DEBUG: Repository parsed successfully. Modules: ${parsedRepo.modules.size}, Kotlin files: ${parsedRepo.kotlinFiles.size}")
+            DebugForgeLogger.debug("DebugForgeController", "Repository parsed successfully. Modules: ${parsedRepo.modules.size}, Source files: ${parsedRepo.sourceFiles.size}")
             
             // Convert to ModuleInfo list
             val modules = parsedRepo.modules.map { module ->
                 convertToModuleInfo(module)
             }
             
-            println("DEBUG: Step 2: Starting indexing")
+            DebugForgeLogger.debug("DebugForgeController", "Step 2: Starting indexing")
             _state.update { it.copy(
                 modules = modules,
                 repoStatus = RepoStatus.Indexing(
-                    totalFiles = parsedRepo.kotlinFiles.size,
+                    totalFiles = parsedRepo.sourceFiles.size,
                     indexedFiles = 0,
                     currentFile = "Starting indexing..."
                 )
@@ -187,9 +188,9 @@ class DebugForgeController(
             
             // Step 2: Index the repository
             val indexResult = projectIndexer.index(parsedRepo)
-            println("DEBUG: Indexing completed")
+            DebugForgeLogger.debug("DebugForgeController", "Indexing completed")
             
-            println("DEBUG: Step 3: Starting analysis")
+            DebugForgeLogger.debug("DebugForgeController", "Step 3: Starting analysis")
             // Step 3: Analyze for diagnostics
             _state.update { it.copy(
                 repoStatus = RepoStatus.Analyzing(
@@ -200,25 +201,25 @@ class DebugForgeController(
             
             diagnosticEngine.analyze(path)
             val diagnostics = diagnosticEngine.diagnostics.value
-            println("DEBUG: Analysis completed. Diagnostics: ${diagnostics.size}")
+            DebugForgeLogger.debug("DebugForgeController", "Analysis completed. Diagnostics: ${diagnostics.size}")
             
             // Emit all diagnostics
             for (diagnostic in diagnostics) {
                 diagnosticEmitter.emit(diagnostic)
             }
             
-            println("DEBUG: Step 4: Generating refactoring suggestions")
+            DebugForgeLogger.debug("DebugForgeController", "Step 4: Generating refactoring suggestions")
             // Step 4: Generate refactoring suggestions
             val suggestions = refactorEngine.analyzeForRefactoring(path)
             val diagnosticSuggestions = refactorEngine.generateFromDiagnostics(diagnostics)
             val allSuggestions = (suggestions + diagnosticSuggestions).distinctBy { it.id }
-            println("DEBUG: Refactoring suggestions generated: ${allSuggestions.size}")
+            DebugForgeLogger.debug("DebugForgeController", "Refactoring suggestions generated: ${allSuggestions.size}")
             
-            println("DEBUG: Step 5: Calculating shared code metrics")
+            DebugForgeLogger.debug("DebugForgeController", "Step 5: Calculating shared code metrics")
             // Step 5: Calculate shared code metrics
             val sharedCodeMetrics = calculateSharedCodeMetrics(modules)
             
-            println("DEBUG: Updating final state")
+            DebugForgeLogger.debug("DebugForgeController", "Updating final state")
             // Update final state
             _state.update { it.copy(
                 modules = modules,
@@ -229,7 +230,7 @@ class DebugForgeController(
                 repoStatus = RepoStatus.Ready(
                     repoPath = path,
                     repoName = parsedRepo.name,
-                    totalFiles = parsedRepo.kotlinFiles.size,
+                    totalFiles = parsedRepo.sourceFiles.size,
                     totalModules = modules.size,
                     loadedAt = now
                 ),
@@ -237,11 +238,10 @@ class DebugForgeController(
                 lastUpdated = Clock.System.now().toEpochMilliseconds()
             ) }
             
-            println("DEBUG: Repository load completed successfully")
+            DebugForgeLogger.debug("DebugForgeController", "Repository load completed successfully")
             
         } catch (e: Exception) {
-            println("DEBUG: Exception during repository load: ${e.message}")
-            e.printStackTrace()
+            DebugForgeLogger.error("DebugForgeController", "Exception during repository load: ${e.message}", e)
             _state.update { it.copy(
                 repoStatus = RepoStatus.Failed(
                     error = e.message ?: "Unknown error",
@@ -281,7 +281,7 @@ class DebugForgeController(
             _state.update { it.copy(
                 modules = modules,
                 repoStatus = RepoStatus.Indexing(
-                    totalFiles = parsedRepo.kotlinFiles.size,
+                    totalFiles = parsedRepo.sourceFiles.size,
                     indexedFiles = 0,
                     currentFile = "Starting indexing..."
                 )
@@ -317,7 +317,7 @@ class DebugForgeController(
                 repoStatus = RepoStatus.Ready(
                     repoPath = localPath,
                     repoName = parsedRepo.name,
-                    totalFiles = parsedRepo.kotlinFiles.size,
+                    totalFiles = parsedRepo.sourceFiles.size,
                     totalModules = modules.size,
                     loadedAt = now
                 ),
@@ -592,6 +592,22 @@ class DebugForgeController(
             )
         }
         
+        // Count files by language
+        val allFiles = detected.sourceSets.flatMap { it.files }
+        val kotlinFiles = allFiles.count { it.absolutePath.endsWith(".kt") || it.absolutePath.endsWith(".kts") }
+        val javaFiles = allFiles.count { it.absolutePath.endsWith(".java") }
+        val javascriptFiles = allFiles.count { it.absolutePath.endsWith(".js") || it.absolutePath.endsWith(".mjs") }
+        val typescriptFiles = allFiles.count { it.absolutePath.endsWith(".ts") || it.absolutePath.endsWith(".tsx") }
+        val pythonFiles = allFiles.count { it.absolutePath.endsWith(".py") }
+        val rustFiles = allFiles.count { it.absolutePath.endsWith(".rs") }
+        val goFiles = allFiles.count { it.absolutePath.endsWith(".go") }
+        val cFiles = allFiles.count { it.absolutePath.endsWith(".c") || it.absolutePath.endsWith(".h") }
+        val cppFiles = allFiles.count { it.absolutePath.endsWith(".cpp") || it.absolutePath.endsWith(".hpp") || it.absolutePath.endsWith(".cc") || it.absolutePath.endsWith(".cxx") }
+        val csharpFiles = allFiles.count { it.absolutePath.endsWith(".cs") }
+        val swiftFiles = allFiles.count { it.absolutePath.endsWith(".swift") }
+        val scalaFiles = allFiles.count { it.absolutePath.endsWith(".scala") }
+        val groovyFiles = allFiles.count { it.absolutePath.endsWith(".groovy") || it.absolutePath.endsWith(".gradle") }
+        
         return ModuleInfo(
             id = detected.gradlePath,
             name = detected.name,
@@ -609,12 +625,35 @@ class DebugForgeController(
                 kspProcessors = emptyList()
             ),
             fileStats = FileStats(
-                totalFiles = sourceSets.sumOf { it.kotlinFileCount },
-                kotlinFiles = sourceSets.sumOf { it.kotlinFileCount },
-                javaFiles = 0,
+                totalFiles = allFiles.size,
+                kotlinFiles = kotlinFiles,
+                javaFiles = javaFiles,
+                javascriptFiles = javascriptFiles,
+                typescriptFiles = typescriptFiles,
+                pythonFiles = pythonFiles,
+                rustFiles = rustFiles,
+                goFiles = goFiles,
+                cFiles = cFiles,
+                cppFiles = cppFiles,
+                csharpFiles = csharpFiles,
+                swiftFiles = swiftFiles,
+                scalaFiles = scalaFiles,
+                groovyFiles = groovyFiles,
                 resourceFiles = 0,
-                totalLinesOfCode = sourceSets.sumOf { it.kotlinLinesOfCode },
-                kotlinLinesOfCode = sourceSets.sumOf { it.kotlinLinesOfCode }
+                totalLinesOfCode = allFiles.sumOf { it.lineCount },
+                kotlinLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".kt") || it.absolutePath.endsWith(".kts") }.sumOf { it.lineCount },
+                javaLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".java") }.sumOf { it.lineCount },
+                javascriptLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".js") || it.absolutePath.endsWith(".mjs") }.sumOf { it.lineCount },
+                typescriptLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".ts") || it.absolutePath.endsWith(".tsx") }.sumOf { it.lineCount },
+                pythonLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".py") }.sumOf { it.lineCount },
+                rustLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".rs") }.sumOf { it.lineCount },
+                goLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".go") }.sumOf { it.lineCount },
+                cLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".c") || it.absolutePath.endsWith(".h") }.sumOf { it.lineCount },
+                cppLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".cpp") || it.absolutePath.endsWith(".hpp") || it.absolutePath.endsWith(".cc") || it.absolutePath.endsWith(".cxx") }.sumOf { it.lineCount },
+                csharpLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".cs") }.sumOf { it.lineCount },
+                swiftLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".swift") }.sumOf { it.lineCount },
+                scalaLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".scala") }.sumOf { it.lineCount },
+                groovyLinesOfCode = allFiles.filter { it.absolutePath.endsWith(".groovy") || it.absolutePath.endsWith(".gradle") }.sumOf { it.lineCount }
             )
         )
     }

@@ -150,6 +150,43 @@ data class BuildConfig(
 enum class BuildSystem {
     GRADLE_KTS,
     GRADLE_GROOVY,
+    MAVEN,
+    NPM,
+    YARN,
+    PNPM,
+    CARGO,
+    GO_MOD,
+    PIP,
+    POETRY,
+    SETUP_PY,
+    PYPROJECT_TOML,
+    MAKEFILE,
+    CMAKE,
+    XCODEPROJ,
+    SLN,  // Visual Studio Solution
+    CSPROJ,  // C# Project
+    UNKNOWN
+}
+
+/**
+ * Programming languages supported by the project scanner.
+ */
+@Serializable
+enum class ProgrammingLanguage {
+    KOTLIN,
+    JAVA,
+    JAVASCRIPT,
+    TYPESCRIPT,
+    PYTHON,
+    RUST,
+    GO,
+    C,
+    CPP,
+    CSHARP,
+    SWIFT,
+    OBJECTIVE_C,
+    SCALA,
+    GROOVY,
     UNKNOWN
 }
 
@@ -161,7 +198,30 @@ data class FileStats(
     val totalFiles: Int,
     val kotlinFiles: Int,
     val javaFiles: Int,
+    val javascriptFiles: Int,
+    val typescriptFiles: Int,
+    val pythonFiles: Int,
+    val rustFiles: Int,
+    val goFiles: Int,
+    val cFiles: Int,
+    val cppFiles: Int,
+    val csharpFiles: Int,
+    val swiftFiles: Int,
+    val scalaFiles: Int,
+    val groovyFiles: Int,
     val resourceFiles: Int,
     val totalLinesOfCode: Int,
-    val kotlinLinesOfCode: Int
+    val kotlinLinesOfCode: Int,
+    val javaLinesOfCode: Int,
+    val javascriptLinesOfCode: Int,
+    val typescriptLinesOfCode: Int,
+    val pythonLinesOfCode: Int,
+    val rustLinesOfCode: Int,
+    val goLinesOfCode: Int,
+    val cLinesOfCode: Int,
+    val cppLinesOfCode: Int,
+    val csharpLinesOfCode: Int,
+    val swiftLinesOfCode: Int,
+    val scalaLinesOfCode: Int,
+    val groovyLinesOfCode: Int
 )

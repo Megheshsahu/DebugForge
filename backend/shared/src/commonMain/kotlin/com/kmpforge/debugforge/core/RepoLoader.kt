@@ -75,14 +75,14 @@ data class ParsedRepository(
     /** Repository name (directory name or Git repo name) */
     val name: String,
     
-    /** Detected Gradle modules */
+    /** Detected modules (can be from any build system) */
     val modules: List<DetectedModule>,
     
     /** Root build configuration */
     val rootBuildConfig: RootBuildConfig,
     
-    /** All Kotlin source files */
-    val kotlinFiles: List<SourceFile>,
+    /** All source files (Kotlin, Java, JS, etc.) */
+    val sourceFiles: List<SourceFile>,
     
     /** All resource files */
     val resourceFiles: List<ResourceFile>,

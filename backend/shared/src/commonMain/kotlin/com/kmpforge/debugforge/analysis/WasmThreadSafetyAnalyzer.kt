@@ -2,6 +2,7 @@ package com.kmpforge.debugforge.analysis
 
 import com.kmpforge.debugforge.diagnostics.*
 import com.kmpforge.debugforge.persistence.RepoIndexDao
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.datetime.Clock
 
 /**
@@ -105,7 +106,7 @@ class WasmThreadSafetyAnalyzer(
                 }
             }
         } catch (e: Exception) {
-            println("WasmThreadSafetyAnalyzer error: ${e.message}")
+            DebugForgeLogger.error("WasmThreadSafetyAnalyzer", "Analysis error: ${e.message}", e)
         }
         
         return diagnostics

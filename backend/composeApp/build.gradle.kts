@@ -60,7 +60,7 @@ kotlin {
                 // Database
                 implementation("app.cash.sqldelight:sqlite-driver:2.0.1")
                 
-                // implementation(project(":shared"))
+                implementation(project(":shared"))
             }
         }
         

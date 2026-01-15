@@ -2,6 +2,7 @@ package com.kmpforge.debugforge.analysis
 
 import com.kmpforge.debugforge.diagnostics.*
 import com.kmpforge.debugforge.persistence.RepoIndexDao
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.datetime.Clock
 
 /**
@@ -81,7 +82,7 @@ class CoroutineLeakDetector(
                 }
             }
         } catch (e: Exception) {
-            println("CoroutineLeakDetector error: ${e.message}")
+            DebugForgeLogger.error("CoroutineLeakDetector", "Analysis error: ${e.message}", e)
         }
         
         return diagnostics

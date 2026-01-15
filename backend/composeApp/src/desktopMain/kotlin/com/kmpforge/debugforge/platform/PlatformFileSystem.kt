@@ -1,5 +1,6 @@
 package com.kmpforge.debugforge.platform
 
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.nio.file.Files
@@ -55,7 +56,7 @@ actual class PlatformFileSystem {
                 }
             }
         } catch (e: Exception) {
-            println("Error opening file chooser: ${e.message}")
+            DebugForgeLogger.error("PlatformFileSystem", "Error opening file chooser: ${e.message}", e)
             continuation.resume(null)
         }
     }

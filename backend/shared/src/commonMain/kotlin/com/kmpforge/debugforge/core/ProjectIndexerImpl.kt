@@ -29,7 +29,7 @@ class ProjectIndexerImpl(
                 progress = 0f,
                 currentFile = null,
                 filesProcessed = 0,
-                totalFiles = repository.kotlinFiles.size
+                totalFiles = repository.sourceFiles.size
             )
             
             // Store repository metadata
@@ -43,7 +43,7 @@ class ProjectIndexerImpl(
                 kotlinVersion = repository.rootBuildConfig.kotlinVersion,
                 gradleVersion = repository.rootBuildConfig.gradleVersion,
                 moduleCount = repository.modules.size,
-                fileCount = repository.kotlinFiles.size,
+                fileCount = repository.sourceFiles.size,
                 sharedCodePercentage = 0f
             ))
             
@@ -80,13 +80,13 @@ class ProjectIndexerImpl(
             var expectCount = 0
             var actualCount = 0
             
-            repository.kotlinFiles.forEachIndexed { index, file ->
+            repository.sourceFiles.forEachIndexed { index, file ->
                 _indexingState.value = IndexingState.InProgress(
                     phase = IndexingPhase.EXTRACTING_SYMBOLS,
-                    progress = index.toFloat() / repository.kotlinFiles.size,
+                    progress = index.toFloat() / repository.sourceFiles.size,
                     currentFile = file.absolutePath,
                     filesProcessed = index,
-                    totalFiles = repository.kotlinFiles.size
+                    totalFiles = repository.sourceFiles.size
                 )
                 
                 // Extract symbols to determine expect/actual status
@@ -143,7 +143,7 @@ class ProjectIndexerImpl(
             
             val endTime = Clock.System.now().toEpochMilliseconds()
             val stats = IndexingStats(
-                totalFiles = repository.kotlinFiles.size,
+                totalFiles = repository.sourceFiles.size,
                 totalSymbols = totalSymbols,
                 totalExpectDeclarations = expectCount,
                 totalActualImplementations = actualCount,
@@ -180,7 +180,7 @@ class ProjectIndexerImpl(
         // Stub: just do a full reindex
         index(repository, true)
         return IndexingDeltaResult(
-            filesAdded = repository.kotlinFiles.size,
+            filesAdded = repository.sourceFiles.size,
             filesModified = 0,
             filesRemoved = 0,
             symbolsAdded = 0,

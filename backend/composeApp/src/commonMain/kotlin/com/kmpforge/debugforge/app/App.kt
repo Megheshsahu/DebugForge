@@ -22,13 +22,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import com.kmpforge.debugforge.platform.PlatformFileSystem
 import com.kmpforge.debugforge.config.GitHubConfig
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 
 @Composable
 fun App() {
-    println("App composable entered")
+    DebugForgeLogger.debug("App", "App composable entered")
     val viewModel = remember { DebugForgeViewModel() }
     val uiState by viewModel.uiState.collectAsState()
-    println("uiState: $uiState")
+    DebugForgeLogger.debug("App", "uiState: $uiState")
     
     MaterialTheme(
         colorScheme = darkColorScheme(

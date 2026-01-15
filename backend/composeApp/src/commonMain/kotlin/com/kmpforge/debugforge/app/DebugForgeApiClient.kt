@@ -1,5 +1,6 @@
 package com.kmpforge.debugforge.app
 
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.coroutines.delay
 import kotlin.io.path.Path
 import kotlin.io.path.exists
@@ -22,14 +23,14 @@ class DebugForgeApiClient {
     suspend fun loadRepo(path: String): LoadResult {
         return try {
             // Standalone mode - simulate loading a repository
-            println("DEBUG: Loading repository from path: $path")
+            DebugForgeLogger.debug("DebugForgeApiClient", "Loading repository from path: $path")
             setProjectPath(path) // Set the current project path
             delay(1000) // Simulate network delay
 
             // Mock successful loading
             LoadResult.Success
         } catch (e: Exception) {
-            println("Error loading repo: ${e.message}")
+            DebugForgeLogger.error("DebugForgeApiClient", "Error loading repo: ${e.message}", e)
             LoadResult.Failed(e.message ?: "Unknown error")
         }
     }
@@ -42,13 +43,13 @@ class DebugForgeApiClient {
     suspend fun cloneRepo(url: String, localPath: String): CloneResult {
         return try {
             // Standalone mode - simulate cloning a repository
-            println("DEBUG: Cloning repository from $url to $localPath")
+            DebugForgeLogger.debug("DebugForgeApiClient", "Cloning repository from $url to $localPath")
             delay(2000) // Simulate network delay
 
             // Mock successful cloning
             CloneResult.Success
         } catch (e: Exception) {
-            println("Error cloning repo: ${e.message}")
+            DebugForgeLogger.error("DebugForgeApiClient", "Error cloning repo: ${e.message}", e)
             CloneResult.Failed(e.message ?: "Unknown error")
         }
     }
@@ -223,10 +224,10 @@ class DebugForgeApiClient {
 
         try {
             val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend" // fallback
-            // Scan Kotlin files in the project
-            val kotlinFiles = findKotlinFiles(projectPath)
+            // Scan source files in the project
+            val sourceFiles = findSourceFiles(projectPath)
 
-            for (file in kotlinFiles) {
+            for (file in sourceFiles) {
                 val content = readFileContent(file)
                 val relativePath = file.substringAfter("$projectPath\\").replace("\\", "/")
 
@@ -234,7 +235,7 @@ class DebugForgeApiClient {
                 diagnostics.addAll(analyzeFileForIssues(content, relativePath))
             }
         } catch (e: Exception) {
-            println("Error during static analysis: ${e.message}")
+            DebugForgeLogger.error("DebugForgeApiClient", "Error during static analysis: ${e.message}", e)
         }
 
         return diagnostics
@@ -250,19 +251,19 @@ class DebugForgeApiClient {
             if (path.exists()) {
                 val moduleDirs = findModuleDirectories(projectPath)
                 for (moduleDir in moduleDirs) {
-                    val kotlinFiles = findKotlinFiles(moduleDir)
+                    val sourceFiles = findSourceFiles(moduleDir)
                     val moduleName = Path(moduleDir).fileName.toString()
 
                     modules.add(ModuleDisplay(
                         name = moduleName,
                         path = moduleDir,
-                        fileCount = kotlinFiles.size,
+                        fileCount = sourceFiles.size,
                         sourceSets = listOf("main", "test") // Simplified
                     ))
                 }
             }
         } catch (e: Exception) {
-            println("Error scanning modules: ${e.message}")
+            DebugForgeLogger.error("DebugForgeApiClient", "Error scanning modules: ${e.message}", e)
         }
 
         return modules
@@ -273,9 +274,9 @@ class DebugForgeApiClient {
 
         try {
             val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend"
-            val kotlinFiles = findKotlinFiles(projectPath)
+            val sourceFiles = findSourceFiles(projectPath)
 
-            for (file in kotlinFiles) {
+            for (file in sourceFiles) {
                 val content = readFileContent(file)
                 val relativePath = file.substringAfter("$projectPath\\").replace("\\", "/")
 
@@ -283,7 +284,7 @@ class DebugForgeApiClient {
                 suggestions.addAll(generateFileSuggestions(content, relativePath))
             }
         } catch (e: Exception) {
-            println("Error generating suggestions: ${e.message}")
+            DebugForgeLogger.error("DebugForgeApiClient", "Error generating suggestions: ${e.message}", e)
         }
 
         return suggestions
@@ -292,11 +293,11 @@ class DebugForgeApiClient {
     private fun calculateMetrics(): MetricsDisplay {
         try {
             val projectPath = currentProjectPath ?: "d:\\Projects\\kotlin project\\kmp-forge-main\\backend"
-            val kotlinFiles = findKotlinFiles(projectPath)
+            val sourceFiles = findSourceFiles(projectPath)
             var totalLines = 0
             var sharedLines = 0
 
-            for (file in kotlinFiles) {
+            for (file in sourceFiles) {
                 val content = readFileContent(file)
                 val lines = content.lines()
                 totalLines += lines.size
@@ -310,18 +311,18 @@ class DebugForgeApiClient {
             val sharedPercentage = if (totalLines > 0) (sharedLines.toDouble() / totalLines) * 100 else 0.0
 
             return MetricsDisplay(
-                totalFiles = kotlinFiles.size,
+                totalFiles = sourceFiles.size,
                 totalLines = totalLines,
                 sharedCodePercent = sharedPercentage
             )
         } catch (e: Exception) {
-            println("Error calculating metrics: ${e.message}")
+            DebugForgeLogger.error("DebugForgeApiClient", "Error calculating metrics: ${e.message}", e)
             return MetricsDisplay(0, 0, 0.0)
         }
     }
 
-    private fun findKotlinFiles(rootPath: String): List<String> {
-        val kotlinFiles = mutableListOf<String>()
+    private fun findSourceFiles(rootPath: String): List<String> {
+        val sourceFiles = mutableListOf<String>()
 
         fun scanDirectory(path: String) {
             try {
@@ -331,10 +332,13 @@ class DebugForgeApiClient {
                 dir.listDirectoryEntries().forEach { entry ->
                     if (entry.toFile().isDirectory &&
                         !entry.fileName.toString().startsWith(".") &&
-                        entry.fileName.toString() != "build") {
+                        entry.fileName.toString() != "build" &&
+                        entry.fileName.toString() != "node_modules" &&
+                        entry.fileName.toString() != "target" &&
+                        entry.fileName.toString() != "dist") {
                         scanDirectory(entry.toString())
-                    } else if (entry.fileName.toString().endsWith(".kt")) {
-                        kotlinFiles.add(entry.toString())
+                    } else if (isSourceFile(entry.fileName.toString())) {
+                        sourceFiles.add(entry.toString())
                     }
                 }
             } catch (e: Exception) {
@@ -343,7 +347,16 @@ class DebugForgeApiClient {
         }
 
         scanDirectory(rootPath)
-        return kotlinFiles
+        return sourceFiles
+    }
+
+    private fun isSourceFile(fileName: String): Boolean {
+        val extensions = listOf(
+            ".kt", ".kts", ".java", ".js", ".mjs", ".ts", ".tsx", 
+            ".py", ".rs", ".go", ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx",
+            ".cs", ".swift", ".scala"
+        )
+        return extensions.any { fileName.endsWith(it) }
     }
 
     private fun findModuleDirectories(rootPath: String): List<String> {

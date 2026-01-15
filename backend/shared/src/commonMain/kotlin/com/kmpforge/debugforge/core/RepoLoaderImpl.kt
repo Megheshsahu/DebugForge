@@ -1,5 +1,6 @@
 package com.kmpforge.debugforge.core
 
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,6 +17,9 @@ class RepoLoaderImpl(
     
     private val _loadingState = MutableStateFlow<LoadingState>(LoadingState.Idle)
     override val loadingState: StateFlow<LoadingState> = _loadingState.asStateFlow()
+
+    private val projectTypeDetector = ProjectTypeDetector()
+    private val moduleDetectorFactory = ModuleDetectorFactory()
     
     override suspend fun loadLocalRepository(path: String): Result<ParsedRepository> {
         return try {
@@ -35,15 +39,28 @@ class RepoLoaderImpl(
             var processedFiles = 0
             
             // Parse build files to detect modules
+            _loadingState.value = LoadingState.InProgress("Detecting project types", 0.15f, null)
+            val projectTypes = projectTypeDetector.detectProjectTypes(files)
+            val primaryProjectType = projectTypeDetector.getPrimaryProjectType(projectTypes)
+
             _loadingState.value = LoadingState.InProgress("Detecting modules", 0.2f, null)
-            val modules = detectModules(path, files)
-            
+            val modules = if (primaryProjectType != null) {
+                val detector = moduleDetectorFactory.getDetector(primaryProjectType.buildSystem)
+                detector.detectModules(path, files, fileSystem)
+            } else {
+                // Fallback to generic detection
+                val genericDetector = moduleDetectorFactory.getDetector(BuildSystem.UNKNOWN)
+                genericDetector.detectModules(path, files, fileSystem)
+            }
+
+            DebugForgeLogger.debug("RepoLoader", "Detected ${modules.size} modules using ${primaryProjectType?.name ?: "generic"} detector")
+
             // Parse root build configuration
             val rootBuildConfig = parseRootBuildConfig(path)
             
             // Collect source files from all modules
             _loadingState.value = LoadingState.InProgress("Parsing source files", 0.4f, null)
-            val kotlinFiles = mutableListOf<SourceFile>()
+            val sourceFiles = mutableListOf<SourceFile>()
             val resourceFiles = mutableListOf<ResourceFile>()
 
             if (modules.isNotEmpty()) {
@@ -56,33 +73,33 @@ class RepoLoaderImpl(
                                 0.4f + (0.5f * processedFiles / totalFiles),
                                 file.relativePath
                             )
-                            kotlinFiles.add(file)
+                            sourceFiles.add(file)
                         }
                     }
                 }
             } else {
-                // Fallback: collect all Kotlin files in the project if no modules detected
-                files.filter { it.endsWith(".kt") || it.endsWith(".kts") }
-                    .filter { !it.contains("/build/") && !it.contains("\\build\\") }
-                    .forEach { kotlinFile ->
+                // Fallback: collect all source files in the project if no modules detected
+                files.filter { isSourceFile(it) }
+                    .filter { !it.contains("/build/") && !it.contains("\\build\\") && !it.contains("/node_modules/") && !it.contains("\\node_modules\\") }
+                    .forEach { sourceFile ->
                         processedFiles++
                         _loadingState.value = LoadingState.InProgress(
                             "Parsing source files",
                             0.4f + (0.5f * processedFiles / totalFiles),
-                            kotlinFile.removePrefix(path).removePrefix("/").removePrefix("\\")
+                            sourceFile.removePrefix(path).removePrefix("/").removePrefix("\\")
                         )
 
-                        val content = fileSystem.readFile(kotlinFile)
-                        kotlinFiles.add(
+                        val content = fileSystem.readFile(sourceFile)
+                        sourceFiles.add(
                             SourceFile(
-                                absolutePath = kotlinFile,
-                                relativePath = kotlinFile.removePrefix(path).removePrefix("/").removePrefix("\\"),
+                                absolutePath = sourceFile,
+                                relativePath = sourceFile.removePrefix(path).removePrefix("/").removePrefix("\\"),
                                 moduleGradlePath = ":",
                                 sourceSetName = "main",
                                 packageName = extractPackageName(content),
                                 content = content,
-                                hash = fileSystem.computeFileHash(kotlinFile),
-                                lastModified = fileSystem.getLastModified(kotlinFile),
+                                hash = fileSystem.computeFileHash(sourceFile),
+                                lastModified = fileSystem.getLastModified(sourceFile),
                                 lineCount = content.lines().size
                             )
                         )
@@ -114,7 +131,7 @@ class RepoLoaderImpl(
                 name = fileSystem.getFileName(path),
                 modules = modules,
                 rootBuildConfig = rootBuildConfig,
-                kotlinFiles = kotlinFiles,
+                sourceFiles = sourceFiles,
                 resourceFiles = resourceFiles,
                 gitInfo = gitInfo,
                 parsedAt = Clock.System.now().toEpochMilliseconds()
@@ -280,7 +297,7 @@ class RepoLoaderImpl(
             )
         }
 
-        println("DEBUG: detectModules - returning ${modules.size} modules")
+        DebugForgeLogger.debug("RepoLoader", "detectModules - returning ${modules.size} modules")
 
         // If no modules found but we have Kotlin files, create a root module
         if (modules.isEmpty()) {
@@ -408,9 +425,9 @@ class RepoLoaderImpl(
         val fullPath = fileSystem.resolvePath(rootPath, kotlinPath)
         // walkDirectory returns absolute paths
         val allFiles = fileSystem.walkDirectory(fullPath)
-        System.out.println("DEBUG: collectKotlinFiles - allFiles count: ${allFiles.size}")
+        DebugForgeLogger.debug("RepoLoader", "collectKotlinFiles - allFiles count: ${allFiles.size}")
         val kotlinFiles = allFiles.filter { it.endsWith(".kt") || it.endsWith(".kts") }
-        System.out.println("DEBUG: collectKotlinFiles - kotlinFiles count: ${kotlinFiles.size}, files: ${kotlinFiles.take(3).joinToString()}")
+        DebugForgeLogger.debug("RepoLoader", "collectKotlinFiles - kotlinFiles count: ${kotlinFiles.size}, files: ${kotlinFiles.take(3).joinToString()}")
         return kotlinFiles.map { absolutePath ->
                 // Compute relative path from the absolute path
                 val normalizedFull = fullPath.replace("\\", "/").trimEnd('/')
@@ -624,6 +641,15 @@ class RepoLoaderImpl(
         } else {
             null
         }
+    }
+    
+    private fun isSourceFile(filePath: String): Boolean {
+        val extensions = listOf(
+            ".kt", ".kts", ".java", ".js", ".mjs", ".ts", ".tsx", 
+            ".py", ".rs", ".go", ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx",
+            ".cs", ".swift", ".scala"
+        )
+        return extensions.any { filePath.endsWith(it) }
     }
     
     companion object {

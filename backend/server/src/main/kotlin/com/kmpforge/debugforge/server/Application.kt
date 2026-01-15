@@ -1,6 +1,7 @@
 package com.kmpforge.debugforge.server
 
 import com.kmpforge.debugforge.api.*
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -752,8 +753,7 @@ class DebugForgeEmbeddedServer(
             try {
                 (server as io.ktor.server.engine.ApplicationEngine).start(wait = true)
             } catch (e: Exception) {
-                println("Server error: ${e.message}")
-                e.printStackTrace()
+                DebugForgeLogger.error("Server error: ${e.message}", e)
             }
         }.apply {
             isDaemon = false // Keep JVM alive

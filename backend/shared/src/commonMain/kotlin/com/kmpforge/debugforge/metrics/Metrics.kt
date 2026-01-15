@@ -42,7 +42,7 @@ enum class OperationType {
 data class RepoStatistics(
     val repoPath: String,
     val totalFiles: Int,
-    val kotlinFiles: Int,
+    val sourceFiles: Int,
     val totalLinesOfCode: Int,
     val moduleCount: Int,
     val targetCount: Int,

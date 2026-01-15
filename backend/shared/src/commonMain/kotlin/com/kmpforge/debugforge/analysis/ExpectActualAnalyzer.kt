@@ -2,6 +2,7 @@ package com.kmpforge.debugforge.analysis
 
 import com.kmpforge.debugforge.diagnostics.*
 import com.kmpforge.debugforge.persistence.RepoIndexDao
+import com.kmpforge.debugforge.utils.DebugForgeLogger
 import kotlinx.datetime.Clock
 
 /**
@@ -83,7 +84,7 @@ class ExpectActualAnalyzer(
                 ))
             }
         } catch (e: Exception) {
-            println("ExpectActualAnalyzer error: ${e.message}")
+            DebugForgeLogger.error("ExpectActualAnalyzer", "Analysis error: ${e.message}", e)
         }
         
         return diagnostics
